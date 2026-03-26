@@ -8,7 +8,7 @@ import type { GovernorLimits, LimitEntry, LimitSeverity } from './types';
  *     SOQL queries: 3 out of 100
  *     SOQL rows: 150 out of 50000
  *     ...
- *
+
  * The lines after the header are continuation lines (not standard log format).
  * The LogParser feeds them here as raw strings.
  */

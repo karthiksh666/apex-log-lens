@@ -113,6 +113,106 @@ export async function fetchLogBody(logId: string): Promise<string> {
   );
 }
 
+// ─── Org-level data (limits + licenses) ──────────────────────────────────────
+
+export interface OrgLimitEntry {
+  key: string;
+  displayName: string;
+  max: number;
+  remaining: number;
+  used: number;
+  percentUsed: number;
+  severity: 'ok' | 'warning' | 'critical';
+}
+
+export interface LicenseEntry {
+  name: string;
+  total: number;
+  used: number;
+  percentUsed: number;
+  severity: 'ok' | 'warning' | 'critical';
+}
+
+export interface OrgData {
+  limits: OrgLimitEntry[];
+  userLicenses: LicenseEntry[];
+  featureLicenses: LicenseEntry[];
+}
+
+// Human-readable names for the most useful org limits
+const LIMIT_DISPLAY_NAMES: Record<string, string> = {
+  DailyApiRequests:                'API Requests (Daily)',
+  DailyAsyncApexExecutions:        'Async Apex Executions (Daily)',
+  DailyBulkApiBatches:             'Bulk API Batches (Daily)',
+  DailyGenericStreamingApiEvents:  'Streaming API Events (Daily)',
+  DailyWorkflowEmails:             'Workflow Emails (Daily)',
+  DataStorageMB:                   'Data Storage (MB)',
+  FileStorageMB:                   'File Storage (MB)',
+  HourlyODataCallout:              'OData Callouts (Hourly)',
+  HourlyPublishedPlatformEvents:   'Platform Events Published (Hourly)',
+  HourlyTimeBasedWorkflow:         'Time-Based Workflows (Hourly)',
+  ActiveScratchOrgs:               'Active Scratch Orgs',
+  DailyScratchOrgs:                'Scratch Orgs (Daily)',
+  DailyFunctionsApiCallLimit:      'Functions API Calls (Daily)',
+};
+
+/**
+ * Fetches org-level limits (from /limits) and user/feature licenses.
+ * Requires an active OrgSession.
+ */
+export async function fetchOrgData(): Promise<OrgData> {
+  const [rawLimits, userLicenseRes, featureLicenseRes] = await Promise.all([
+    SalesforceClient.get<Record<string, { Max: number; Remaining: number }>>(
+      `/services/data/${API_VERSION}/limits/`
+    ),
+    SalesforceClient.get<SoqlResponse<{ Name: string; TotalLicenses: number; UsedLicenses: number }>>(
+      `/services/data/${API_VERSION}/query?q=${encodeURIComponent(
+        'SELECT Name, TotalLicenses, UsedLicenses FROM UserLicense ORDER BY Name'
+      )}`
+    ),
+    SalesforceClient.get<SoqlResponse<{ Name: string; TotalLicenses: number; UsedLicenses: number }>>(
+      `/services/data/${API_VERSION}/query?q=${encodeURIComponent(
+        'SELECT Name, TotalLicenses, UsedLicenses FROM PermissionSetLicense ORDER BY Name'
+      )}`
+    ),
+  ]);
+
+  // Build limits list — only the ones with a known display name (most useful)
+  const limits: OrgLimitEntry[] = Object.entries(rawLimits)
+    .filter(([key]) => LIMIT_DISPLAY_NAMES[key] !== undefined)
+    .map(([key, val]) => {
+      const used = val.Max - val.Remaining;
+      const pct  = val.Max > 0 ? Math.round((used / val.Max) * 100) : 0;
+      return {
+        key,
+        displayName: LIMIT_DISPLAY_NAMES[key],
+        max: val.Max,
+        remaining: val.Remaining,
+        used,
+        percentUsed: pct,
+        severity: pct >= 80 ? 'critical' : pct >= 50 ? 'warning' : 'ok',
+      };
+    })
+    .sort((a, b) => b.percentUsed - a.percentUsed);
+
+  const mapLicense = (r: { Name: string; TotalLicenses: number; UsedLicenses: number }): LicenseEntry => {
+    const pct = r.TotalLicenses > 0 ? Math.round((r.UsedLicenses / r.TotalLicenses) * 100) : 0;
+    return {
+      name: r.Name,
+      total: r.TotalLicenses,
+      used: r.UsedLicenses,
+      percentUsed: pct,
+      severity: pct >= 90 ? 'critical' : pct >= 70 ? 'warning' : 'ok',
+    };
+  };
+
+  return {
+    limits,
+    userLicenses:    userLicenseRes.records.map(mapLicense),
+    featureLicenses: featureLicenseRes.records.map(mapLicense),
+  };
+}
+
 // ─── Internal helper for pre-connect validation ───────────────────────────────
 
 async function fetchWithTempAuth<T>(
