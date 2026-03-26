@@ -46,10 +46,11 @@ function renderTransactionCard(tx: Transaction, index: number): string {
 
   const story      = buildStory(tx);
   const searchText = [tx.entryPoint, tx.objectName, ...tx.phases.map(p => p.name)].filter(Boolean).join(' ');
+  _nodeSeq = 0;
   const treeNodes  = buildExecutionTree(tx.phases);
 
   return /* html */`
-    <div class="tx-card ${statusClass}" data-search-text="${escAttr(searchText)}">
+    <div class="tx-card ${statusClass}" data-search-text="${escAttr(searchText)}" style="--card-i:${index - 1}">
 
       <!-- ── Header (click to collapse) ── -->
       <div class="tx-header">
@@ -166,7 +167,10 @@ function getConnectorLabel(child: ExecutionPhase, parent: ExecutionPhase | null)
 
 // ─── Tree renderer ────────────────────────────────────────────────────────────
 
+let _nodeSeq = 0; // stagger counter, reset per card render call
+
 function renderTreeNode(node: TreeNode): string {
+  const i         = _nodeSeq++;
   const p         = node.phase;
   const cls       = phaseTypeClass(p.type);
   const statusCls = p.status === 'error' ? 'etree-err' : p.status === 'warning' ? 'etree-warn' : '';
@@ -206,7 +210,7 @@ function renderTreeNode(node: TreeNode): string {
     `
     : '';
 
-  return `<div class="etree-node">${row}${children}</div>`;
+  return `<div class="etree-node" style="--node-i:${i}">${row}${children}</div>`;
 }
 
 // ─── Phase detail panel ───────────────────────────────────────────────────────
@@ -214,7 +218,7 @@ function renderTreeNode(node: TreeNode): string {
 function renderPhaseDetail(phase: ExecutionPhase): string {
   const label = getPhaseLabel(phase.type);
   return /* html */`
-    <div class="phase-detail hidden" id="phase-detail-${phase.id}">
+    <div class="phase-detail" id="phase-detail-${phase.id}">
       <div class="pd-header">
         <span class="pd-icon">${getPhaseIcon(phase.type)}</span>
         <div class="pd-title-group">

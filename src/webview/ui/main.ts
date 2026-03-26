@@ -167,7 +167,7 @@ function renderApp(log: ParsedLog): void {
     }
   });
 
-  // Phase pill expand/collapse
+  // Phase pill expand/collapse — uses pd-open for smooth height transition
   document.addEventListener('click', e => {
     const pill = (e.target as HTMLElement).closest('.phase-pill') as HTMLElement | null;
     if (!pill) return;
@@ -176,8 +176,9 @@ function renderApp(log: ParsedLog): void {
     if (!phaseId) return;
     const detail = document.getElementById(`phase-detail-${phaseId}`);
     if (detail) {
-      detail.classList.toggle('hidden');
-      pill.classList.toggle('active');
+      const opening = !detail.classList.contains('pd-open');
+      detail.classList.toggle('pd-open', opening);
+      pill.classList.toggle('active', opening);
     }
   });
 
