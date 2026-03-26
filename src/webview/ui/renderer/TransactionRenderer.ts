@@ -4,9 +4,13 @@ import { phaseTypeClass } from '../../../parser/PhaseClassifier';
 import { formatDuration } from '../../../utils/TimeUtils';
 
 /**
- * Flow tab — the primary view.
- * Shows each Salesforce execution as a visual story card with a step-by-step
- * lifecycle flow. Designed to be readable by anyone, not just Salesforce experts.
+ * Execution tab — the primary view.
+ *
+ * Each Salesforce transaction is rendered as a causal tree:
+ * the root is the triggering DML / script, and every child node
+ * shows WHAT fired it (via a connector label) and WHAT happened
+ * inside (queries, writes, errors). Clicking any row opens its
+ * detail panel inline.
  */
 export function renderTransactions(log: ParsedLog): string {
   if (log.transactions.length === 0) {
@@ -33,16 +37,16 @@ export function renderTransactions(log: ParsedLog): string {
 }
 
 function renderTransactionCard(tx: Transaction, index: number): string {
-  const isOk      = !tx.hasErrors && !tx.hasSlow;
-  const isWarning = !tx.hasErrors && tx.hasSlow;
   const isError   = tx.hasErrors;
+  const isWarning = !tx.hasErrors && tx.hasSlow;
 
   const statusIcon  = isError ? '🔴' : isWarning ? '🟡' : '🟢';
   const statusLabel = isError ? 'Failed'  : isWarning ? 'Slow'  : 'Healthy';
   const statusClass = isError ? 'tx-error' : isWarning ? 'tx-warning' : 'tx-ok';
 
-  const story = buildStory(tx);
+  const story      = buildStory(tx);
   const searchText = [tx.entryPoint, tx.objectName, ...tx.phases.map(p => p.name)].filter(Boolean).join(' ');
+  const treeNodes  = buildExecutionTree(tx.phases);
 
   return /* html */`
     <div class="tx-card ${statusClass}" data-search-text="${escAttr(searchText)}">
@@ -66,99 +70,148 @@ function renderTransactionCard(tx: Transaction, index: number): string {
         </div>
       </div>
 
-      <!-- ── Body ── -->
+      <!-- ── Body: execution tree + detail panels ── -->
       <div class="tx-body">
-
-        ${tx.phases.length > 0 ? /* html */`
-          <div class="tx-flow-label">Step-by-step execution flow</div>
-          ${renderLifecycleFlow(tx)}
-          <div class="tx-flow-hint">Click any step to see its details ↑</div>
+        ${treeNodes.length > 0 ? /* html */`
+          <div class="tx-flow-label">Execution tree — click any step to see its details</div>
+          <div class="exec-tree">${treeNodes.map(n => renderTreeNode(n)).join('')}</div>
         ` : ''}
 
-        ${tx.phases.map(p => renderPhaseDetail(p, tx.durationMs ?? 0)).join('')}
+        <!-- Detail panels (hidden until a row is clicked) -->
+        ${tx.phases.map(p => renderPhaseDetail(p)).join('')}
         ${tx.errors.length > 0 ? renderTxErrors(tx) : ''}
       </div>
     </div>
   `;
 }
 
-// Build a plain-English story sentence for the transaction
-function buildStory(tx: Transaction): string {
-  const parts: string[] = [];
+// ─── Tree builder ─────────────────────────────────────────────────────────────
 
-  if (tx.objectName && tx.dmlOperation) {
-    parts.push(`${tx.objectName} was ${tx.dmlOperation.toLowerCase()}d`);
-  } else if (tx.entryPoint.toLowerCase().includes('anonymous')) {
-    parts.push('Anonymous Apex ran');
-  } else {
-    parts.push(tx.entryPoint);
+interface TreeNode {
+  phase: ExecutionPhase;
+  connector: string;   // label on the edge from parent → this node
+  children: TreeNode[];
+}
+
+function buildExecutionTree(phases: ExecutionPhase[]): TreeNode[] {
+  const roots: TreeNode[] = [];
+  // stack[depth] = last node seen at that depth level
+  const stack: Array<TreeNode | undefined> = [];
+
+  for (const phase of phases) {
+    const node: TreeNode = {
+      phase,
+      connector: getConnectorLabel(phase, stack[phase.depth - 1]?.phase ?? null),
+      children: [],
+    };
+
+    if (phase.depth === 0) {
+      roots.push(node);
+    } else {
+      const parent = stack[phase.depth - 1];
+      if (parent) {
+        parent.children.push(node);
+      } else {
+        roots.push(node); // orphaned node — surface at root
+      }
+    }
+
+    stack[phase.depth] = node;
+    stack.length = phase.depth + 1; // discard deeper stale entries
   }
 
-  const trigCount = tx.phases.filter(p => p.type === 'BEFORE_TRIGGER' || p.type === 'AFTER_TRIGGER').length;
-  const flowCount = tx.phases.filter(p => p.type === 'FLOW' || p.type === 'PROCESS_BUILDER').length;
-  const valCount  = tx.phases.filter(p => p.type === 'VALIDATION_RULE').length;
-  const wfCount   = tx.phases.filter(p => p.type === 'WORKFLOW_RULE').length;
-
-  const items: string[] = [];
-  if (trigCount > 0) items.push(`${trigCount} trigger${trigCount > 1 ? 's' : ''} fired`);
-  if (flowCount > 0) items.push(`${flowCount} flow${flowCount > 1 ? 's' : ''} ran`);
-  if (valCount  > 0) items.push(`${valCount} validation${valCount > 1 ? 's' : ''} checked`);
-  if (wfCount   > 0) items.push(`${wfCount} workflow rule${wfCount > 1 ? 's' : ''} evaluated`);
-
-  if (items.length > 0) parts.push(`— ${items.join(', ')}`);
-
-  if (tx.hasErrors)  parts.push('· ❌ Ended with errors');
-  else if (tx.hasSlow) parts.push('· ⚠️ Some steps were slow');
-  else parts.push('· ✅ Completed successfully');
-
-  return parts.join(' ');
+  return roots;
 }
 
-function renderLifecycleFlow(tx: Transaction): string {
-  const totalMs = tx.durationMs ?? 1;
-  const pills = tx.phases.map((p, i) => {
-    const isLast = i === tx.phases.length - 1;
-    return renderPhasePill(p, totalMs) + (isLast ? '' : `<span class="flow-arrow">→</span>`);
-  }).join('');
+/** Infer the human-readable reason this phase fired, given its parent. */
+function getConnectorLabel(child: ExecutionPhase, parent: ExecutionPhase | null): string {
+  const ct = child.type as string;
+  const pt = parent?.type as string | undefined;
+  const op = (child.operation ?? parent?.operation ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
 
-  return /* html */`
-    <div class="lifecycle-flow">
-      <div class="flow-track">${pills}</div>
+  if (ct === 'BEFORE_TRIGGER') return `before ${op || 'save'} →`;
+  if (ct === 'AFTER_TRIGGER')  return `after ${op || 'save'} →`;
+
+  if (ct === 'VALIDATION_RULE') return 'validate record';
+
+  if (ct === 'WORKFLOW_RULE')   return 'workflow rule evaluates';
+
+  if (ct === 'FLOW') {
+    if (pt === 'WORKFLOW_RULE')  return 'field update fires flow';
+    if (pt === 'FLOW')           return 'sub-flow called';
+    if (pt === 'PROCESS_BUILDER') return 'process calls flow';
+    if (pt === 'BEFORE_TRIGGER' || pt === 'AFTER_TRIGGER') return 'record-triggered flow';
+    return 'flow triggered';
+  }
+
+  if (ct === 'PROCESS_BUILDER') {
+    if (pt === 'WORKFLOW_RULE')  return 'workflow launches process';
+    return 'process builder evaluates';
+  }
+
+  if (ct === 'ASSIGNMENT_RULE') return 'assignment rule runs';
+  if (ct === 'AUTO_RESPONSE')   return 'auto-response sends';
+  if (ct === 'ESCALATION_RULE') return 'escalation rule checks';
+
+  if (ct === 'APEX_CLASS') {
+    if (pt === 'BEFORE_TRIGGER' || pt === 'AFTER_TRIGGER') return 'trigger calls class';
+    if (pt === 'FLOW')           return 'flow invokes Apex';
+    return 'calls class';
+  }
+
+  if (ct === 'CALLOUT') return 'HTTP callout';
+
+  return 'calls';
+}
+
+// ─── Tree renderer ────────────────────────────────────────────────────────────
+
+function renderTreeNode(node: TreeNode): string {
+  const p         = node.phase;
+  const cls       = phaseTypeClass(p.type);
+  const statusCls = p.status === 'error' ? 'etree-err' : p.status === 'warning' ? 'etree-warn' : '';
+  const icon      = getPhaseIcon(p.type);
+  const label     = getPhaseLabel(p.type);
+  const durCls    = p.status === 'error' ? 'etree-dur-err' : p.isSlow ? 'etree-dur-slow' : '';
+
+  const row = /* html */`
+    <div class="etree-row ${cls} ${statusCls} phase-pill" data-phase-id="${p.id}"
+         title="${escAttr(p.entryPoint)}">
+      <span class="etree-icon">${icon}</span>
+      <div class="etree-info">
+        <span class="etree-type-label">${label}</span>
+        <span class="etree-name">${escHtml(p.name.length > 30 ? p.name.slice(0, 28) + '…' : p.name)}</span>
+      </div>
+      <div class="etree-badges">
+        ${p.soqlCount    > 0 ? `<span class="etree-badge">🔍 ${p.soqlCount}</span>` : ''}
+        ${p.dmlCount     > 0 ? `<span class="etree-badge">💾 ${p.dmlCount}</span>` : ''}
+        ${p.calloutCount > 0 ? `<span class="etree-badge">🌐 ${p.calloutCount}</span>` : ''}
+        ${p.errorCount   > 0 ? `<span class="etree-badge etree-badge-err">⚠ ${p.errorCount}</span>` : ''}
+      </div>
+      <span class="etree-dur ${durCls}">${formatDuration(p.durationMs)}</span>
+      <span class="etree-chevron">▶</span>
     </div>
   `;
+
+  const children = node.children.length > 0
+    ? /* html */`
+      <div class="etree-children">
+        ${node.children.map(child => /* html */`
+          <div class="etree-connector">
+            <span class="etree-connector-label">${escHtml(child.connector)}</span>
+          </div>
+          ${renderTreeNode(child)}
+        `).join('')}
+      </div>
+    `
+    : '';
+
+  return `<div class="etree-node">${row}${children}</div>`;
 }
 
-function renderPhasePill(phase: ExecutionPhase, totalMs: number): string {
-  const cls       = phaseTypeClass(phase.type);
-  const statusCls = phase.status === 'error' ? 'pill-error' : phase.status === 'warning' ? 'pill-warning' : '';
-  const icon      = getPhaseIcon(phase.type);
-  const label     = getPhaseLabel(phase.type);
-  const pct       = totalMs > 0 && phase.durationMs ? Math.round((phase.durationMs / totalMs) * 100) : 0;
-  const barColor  = phase.status === 'error' ? 'var(--vscode-errorForeground)' :
-                    phase.status === 'warning' ? 'var(--cat-db)' : 'var(--cat-apex)';
+// ─── Phase detail panel ───────────────────────────────────────────────────────
 
-  return /* html */`
-    <div class="phase-pill ${cls} ${statusCls}" data-phase-id="${phase.id}" title="Click to expand · ${escAttr(phase.entryPoint)}">
-      <div class="pill-icon">${icon}</div>
-      <div class="pill-body">
-        <span class="pill-type-label">${label}</span>
-        <span class="pill-label">${escHtml(phase.name.length > 18 ? phase.name.slice(0, 16) + '…' : phase.name)}</span>
-        ${phase.operation ? `<span class="pill-op">${escHtml(phase.operation)}</span>` : ''}
-      </div>
-      <div class="pill-timing-bar-track">
-        <div class="pill-timing-bar-fill" style="width:${Math.max(pct, 3)}%;background:${barColor};"></div>
-      </div>
-      <span class="pill-duration ${phase.isSlow ? 'pill-slow' : ''}">${formatDuration(phase.durationMs)}</span>
-      <div class="pill-badges">
-        ${phase.soqlCount > 0  ? `<span class="mini-badge" title="${phase.soqlCount} SOQL">Q:${phase.soqlCount}</span>` : ''}
-        ${phase.dmlCount  > 0  ? `<span class="mini-badge" title="${phase.dmlCount} DML">W:${phase.dmlCount}</span>` : ''}
-        ${phase.errorCount > 0 ? `<span class="mini-badge mini-badge-error" title="${phase.errorCount} error(s)">⚠</span>` : ''}
-      </div>
-    </div>
-  `;
-}
-
-function renderPhaseDetail(phase: ExecutionPhase, _totalMs: number): string {
+function renderPhaseDetail(phase: ExecutionPhase): string {
   const label = getPhaseLabel(phase.type);
   return /* html */`
     <div class="phase-detail hidden" id="phase-detail-${phase.id}">
@@ -247,6 +300,39 @@ function renderTxErrors(tx: Transaction): string {
   `;
 }
 
+// ─── Story sentence ───────────────────────────────────────────────────────────
+
+function buildStory(tx: Transaction): string {
+  const parts: string[] = [];
+
+  if (tx.objectName && tx.dmlOperation) {
+    parts.push(`${tx.objectName} was ${tx.dmlOperation.toLowerCase()}d`);
+  } else if (tx.entryPoint.toLowerCase().includes('anonymous')) {
+    parts.push('Anonymous Apex ran');
+  } else {
+    parts.push(tx.entryPoint);
+  }
+
+  const trigCount = tx.phases.filter(p => p.type === 'BEFORE_TRIGGER' || p.type === 'AFTER_TRIGGER').length;
+  const flowCount = tx.phases.filter(p => p.type === 'FLOW' || p.type === 'PROCESS_BUILDER').length;
+  const valCount  = tx.phases.filter(p => p.type === 'VALIDATION_RULE').length;
+  const wfCount   = tx.phases.filter(p => p.type === 'WORKFLOW_RULE').length;
+
+  const items: string[] = [];
+  if (trigCount > 0) items.push(`${trigCount} trigger${trigCount > 1 ? 's' : ''} fired`);
+  if (flowCount > 0) items.push(`${flowCount} automation${flowCount > 1 ? 's' : ''} ran`);
+  if (valCount  > 0) items.push(`${valCount} validation${valCount > 1 ? 's' : ''} checked`);
+  if (wfCount   > 0) items.push(`${wfCount} workflow rule${wfCount > 1 ? 's' : ''} evaluated`);
+
+  if (items.length > 0) parts.push(`— ${items.join(', ')}`);
+
+  if (tx.hasErrors)    parts.push('· ❌ Ended with errors');
+  else if (tx.hasSlow) parts.push('· ⚠️ Some steps were slow');
+  else                 parts.push('· ✅ Completed successfully');
+
+  return parts.join(' ');
+}
+
 // ─── Phase metadata ───────────────────────────────────────────────────────────
 
 function getPhaseIcon(type: PhaseType): string {
@@ -269,7 +355,6 @@ function getPhaseIcon(type: PhaseType): string {
   return icons[type] ?? '❓';
 }
 
-// Plain-English labels — no jargon
 function getPhaseLabel(type: PhaseType): string {
   const labels: Record<string, string> = {
     BEFORE_TRIGGER:  'Before Save',

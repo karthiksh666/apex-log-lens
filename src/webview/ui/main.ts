@@ -89,7 +89,7 @@ function renderApp(log: ParsedLog): void {
   // ── 6 tabs max ──────────────────────────────────────────────────────────────
   const issuesBadge = log.summary.errorCount;
   const tabs = [
-    { id: 'flow',       label: '⚡ Flow',       badge: null,        always: true,          error: log.summary.errorCount > 0 },
+    { id: 'flow',       label: '⚡ Execution',  badge: null,        always: true,          error: log.summary.errorCount > 0 },
     { id: 'issues',     label: '🚨 Issues',     badge: issuesBadge, always: true,          error: log.summary.errorCount > 0 },
     { id: 'data',       label: '🗄 Data',       badge: null,        always: hasData,       error: false },
     { id: 'automation', label: '⚙ Automation', badge: null,        always: hasAutomation, error: false },
