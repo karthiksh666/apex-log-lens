@@ -8,6 +8,7 @@ body {
   background: var(--vscode-editor-background);
   line-height: 1.5;
   overflow-x: hidden;
+  user-select: text; /* VS Code webview host sets none — re-enable for all content */
 }
 
 /* ─── Premium scrollbar ──────────────────────────────────────────────────────── */
