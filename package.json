@@ -1,0 +1,179 @@
+{
+  "name": "apex-log-lens",
+  "displayName": "Apex Log Lens",
+  "description": "Brings clarity to Salesforce Apex debug logs — timeline view, SOQL/DML analysis, governor limits, and error highlights.",
+  "version": "0.1.0",
+  "publisher": "karthiksh",
+  "icon": "images/icon.png",
+  "galleryBanner": { "color": "#00A1E0", "theme": "dark" },
+  "engines": { "vscode": "^1.90.0" },
+  "categories": ["Visualization", "Other"],
+  "keywords": ["salesforce", "apex", "debug", "log", "soql"],
+  "license": "MIT",
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "workspaceContains:**/*.log"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "apexdebuglog",
+        "aliases": ["Apex Debug Log", "Salesforce Log"],
+        "extensions": [".log"],
+        "firstLine": "^\\d{2}:\\d{2}:\\d{2}\\.\\d+\\s+\\(\\d+\\)\\|EXECUTION_STARTED",
+        "configuration": "./syntaxes/language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "apexdebuglog",
+        "scopeName": "text.apexdebuglog",
+        "path": "./syntaxes/apexdebuglog.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "sflog.openFile",
+        "title": "Open Log File...",
+        "category": "Salesforce Log Viewer",
+        "icon": "$(file-symlink-file)"
+      },
+      {
+        "command": "sflog.openActiveEditor",
+        "title": "View Current Log",
+        "category": "Salesforce Log Viewer",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "sflog.exportSummary",
+        "title": "Export Summary",
+        "category": "Salesforce Log Viewer",
+        "icon": "$(export)"
+      },
+      {
+        "command": "sflog.toggleOutline",
+        "title": "Toggle Outline",
+        "category": "Salesforce Log Viewer",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "sflog.clearPanel",
+        "title": "Close Viewer",
+        "category": "Salesforce Log Viewer",
+        "icon": "$(close)"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        { "command": "sflog.openFile" },
+        { "command": "sflog.openActiveEditor", "when": "editorLangId == 'apexdebuglog'" },
+        { "command": "sflog.exportSummary", "when": "sflog.panelActive" },
+        { "command": "sflog.toggleOutline" },
+        { "command": "sflog.clearPanel", "when": "sflog.panelActive" }
+      ],
+      "editor/title": [
+        {
+          "command": "sflog.openActiveEditor",
+          "when": "editorLangId == 'apexdebuglog'",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "sflog.openFile",
+          "when": "resourceExtname == '.log'",
+          "group": "navigation"
+        }
+      ]
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "sflog.outline",
+          "name": "Log Outline",
+          "when": "sflog.logLoaded",
+          "icon": "$(list-tree)"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "sflog.outline",
+        "contents": "No log loaded.\n[Open a Log File](command:sflog.openFile)\nOr open any `.log` file and click **View Current Log** in the editor toolbar."
+      }
+    ],
+    "configuration": {
+      "title": "Salesforce Debug Log Viewer",
+      "properties": {
+        "sflog.maxFileSizeMB": {
+          "type": "number",
+          "default": 50,
+          "minimum": 1,
+          "maximum": 500,
+          "description": "Maximum log file size (MB) to parse fully. Larger files open in raw-only mode."
+        },
+        "sflog.defaultTab": {
+          "type": "string",
+          "enum": ["timeline", "soql", "dml", "errors", "limits", "raw"],
+          "default": "timeline",
+          "description": "Which tab to show first when a log is opened."
+        },
+        "sflog.showMethodEntryExit": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show METHOD_ENTRY/EXIT events in the Timeline. Disabled by default to reduce noise for beginners."
+        },
+        "sflog.highlightSlowSoqlMs": {
+          "type": "number",
+          "default": 100,
+          "description": "SOQL queries slower than this threshold (ms) are highlighted in yellow in the SOQL tab."
+        },
+        "sflog.autoOpenOnLogFile": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically open the Log Viewer when a .log file is opened in the editor."
+        }
+      }
+    },
+    "keybindings": [
+      {
+        "command": "sflog.openActiveEditor",
+        "key": "ctrl+shift+l",
+        "mac": "cmd+shift+l",
+        "when": "editorLangId == 'apexdebuglog'"
+      }
+    ]
+  },
+  "dependencies": {
+    "@vscode/webview-ui-toolkit": "^1.4.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "@vscode/test-electron": "^2.4.0",
+    "esbuild": "^0.21.0",
+    "eslint": "^9.0.0",
+    "jest": "^29.0.0",
+    "ts-jest": "^29.0.0",
+    "typescript": "^5.4.0"
+  },
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "watch": "node esbuild.config.mjs --watch",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "lint": "eslint src",
+    "package": "npm run build && vsce package"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "testMatch": ["**/test/unit/**/*.test.ts"],
+    "moduleNameMapper": {
+      "^vscode$": "<rootDir>/test/__mocks__/vscode.ts"
+    }
+  }
+}
