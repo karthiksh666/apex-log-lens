@@ -29,39 +29,6 @@ export function renderTransactions(log: ParsedLog): string {
         ${cards}
       </div>
     </div>
-    <script>
-    (function() {
-      var search = document.getElementById('tx-search');
-      if (search) {
-        search.addEventListener('input', function() {
-          var q = search.value.toLowerCase();
-          document.querySelectorAll('.tx-card').forEach(function(card) {
-            card.classList.toggle('hidden', !!q && !(card.dataset.searchText || '').toLowerCase().includes(q));
-          });
-        });
-      }
-
-      // Phase pill expand
-      document.querySelectorAll('.phase-pill').forEach(function(pill) {
-        pill.addEventListener('click', function(e) {
-          e.stopPropagation();
-          var detail = document.getElementById('phase-detail-' + pill.dataset.phaseId);
-          if (detail) {
-            detail.classList.toggle('hidden');
-            pill.classList.toggle('active');
-          }
-        });
-      });
-
-      // Transaction collapse
-      document.querySelectorAll('.tx-header').forEach(function(header) {
-        header.addEventListener('click', function() {
-          var card = header.closest('.tx-card');
-          if (card) card.classList.toggle('collapsed');
-        });
-      });
-    })();
-    </script>
   `;
 }
 

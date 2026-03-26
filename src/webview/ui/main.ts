@@ -167,6 +167,38 @@ function renderApp(log: ParsedLog): void {
     }
   });
 
+  // Phase pill expand/collapse
+  document.addEventListener('click', e => {
+    const pill = (e.target as HTMLElement).closest('.phase-pill') as HTMLElement | null;
+    if (!pill) return;
+    e.stopPropagation();
+    const phaseId = pill.dataset['phaseId'];
+    if (!phaseId) return;
+    const detail = document.getElementById(`phase-detail-${phaseId}`);
+    if (detail) {
+      detail.classList.toggle('hidden');
+      pill.classList.toggle('active');
+    }
+  });
+
+  // Transaction card collapse
+  document.addEventListener('click', e => {
+    const header = (e.target as HTMLElement).closest('.tx-header') as HTMLElement | null;
+    if (!header) return;
+    const card = header.closest('.tx-card');
+    if (card) card.classList.toggle('collapsed');
+  });
+
+  // Flow tab search
+  document.addEventListener('input', e => {
+    const input = e.target as HTMLElement;
+    if (input.id !== 'tx-search') return;
+    const q = (input as HTMLInputElement).value.toLowerCase();
+    document.querySelectorAll<HTMLElement>('.tx-card').forEach(card => {
+      card.classList.toggle('hidden', !!q && !(card.dataset['searchText'] ?? '').toLowerCase().includes(q));
+    });
+  });
+
   // Auto-jump to issues tab if there are errors
   if (log.summary.errorCount > 0) {
     renderTab('issues');
