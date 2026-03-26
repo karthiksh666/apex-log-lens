@@ -12,6 +12,7 @@ import { renderDml } from './renderer/DmlRenderer';
 import { renderErrors } from './renderer/ErrorRenderer';
 import { renderLimits } from './renderer/LimitsRenderer';
 import { renderRaw } from './renderer/RawRenderer';
+import { renderDataAccess } from './renderer/DataAccessRenderer';
 
 declare const acquireVsCodeApi: () => {
   postMessage: (msg: unknown) => void;
@@ -49,9 +50,11 @@ function renderApp(log: ParsedLog): void {
   const dbgCount   = [...new Set(log.transactions.flatMap(t => t.debugStatements).map(d => `${d.lineNumber}-${d.message}`))].length;
 
   // Primary tabs always shown + secondary tabs only if they have data
+  const objCount = log.soqlStatements.length + log.dmlStatements.length;
   const tabs = [
     { id: 'flow',       label: '⚡ Flow',        badge: null,                    always: true,             error: log.summary.errorCount > 0 },
     { id: 'errors',     label: '🚨 Errors',      badge: log.summary.errorCount,  always: true,             error: log.summary.errorCount > 0 },
+    { id: 'objects',    label: '🗂 Objects',     badge: null,                    always: objCount > 0,     error: false },
     { id: 'soql',       label: '🔍 SOQL',        badge: log.summary.soqlCount,   always: log.summary.soqlCount > 0,  error: false },
     { id: 'dml',        label: '💾 DML',         badge: log.summary.dmlCount,    always: log.summary.dmlCount > 0,   error: false },
     { id: 'debug',      label: '🐛 Debug',       badge: dbgCount,                always: dbgCount > 0,     error: false },
@@ -89,6 +92,7 @@ function renderApp(log: ParsedLog): void {
   const renders: Record<string, () => string> = {
     flow:       () => renderTransactions(log),
     errors:     () => renderErrors(log),
+    objects:    () => renderDataAccess(log),
     soql:       () => renderSoql(log),
     dml:        () => renderDml(log),
     debug:      () => renderDebug(log),
