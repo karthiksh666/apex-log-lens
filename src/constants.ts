@@ -6,6 +6,9 @@ export const Commands = {
   TOGGLE_OUTLINE: 'sflog.toggleOutline',
   CLEAR_PANEL: 'sflog.clearPanel',
   COPY_EVENT_DETAIL: 'sflog.copyEventDetail',
+  CONNECT_ORG: 'sflog.connectOrg',
+  DISCONNECT_ORG: 'sflog.disconnectOrg',
+  FETCH_LOGS: 'sflog.fetchLogs',
 } as const;
 
 /** VS Code context keys used for when-clause conditions */

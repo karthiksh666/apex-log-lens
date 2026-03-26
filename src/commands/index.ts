@@ -4,6 +4,8 @@ import { pickLogFile, readLogFile, formatBytes } from '../utils/FileUtils';
 import { parseLog } from '../parser';
 import { LogViewerPanel } from '../webview/LogViewerPanel';
 import { logger } from '../utils/Logger';
+import { connectOrgCommand, disconnectOrgCommand } from './ConnectOrgCommand';
+import { fetchLogsCommand } from './FetchLogsCommand';
 
 /**
  * Registers all extension commands and returns a disposable array.
@@ -15,6 +17,9 @@ export function registerCommands(extensionUri: vscode.Uri): vscode.Disposable[] 
     vscode.commands.registerCommand(Commands.OPEN_ACTIVE_EDITOR, () => openActiveEditorCommand(extensionUri)),
     vscode.commands.registerCommand(Commands.CLEAR_PANEL, clearPanelCommand),
     vscode.commands.registerCommand(Commands.EXPORT_SUMMARY, exportSummaryCommand),
+    vscode.commands.registerCommand(Commands.CONNECT_ORG, () => connectOrgCommand()),
+    vscode.commands.registerCommand(Commands.DISCONNECT_ORG, () => disconnectOrgCommand()),
+    vscode.commands.registerCommand(Commands.FETCH_LOGS, () => fetchLogsCommand(extensionUri)),
   ];
 }
 

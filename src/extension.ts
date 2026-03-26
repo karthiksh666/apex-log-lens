@@ -4,15 +4,19 @@ import { logger } from './utils/Logger';
 import { LogCodeLensProvider } from './providers/LogCodeLensProvider';
 import { LogOutlineProvider } from './treeview/LogOutlineProvider';
 import { LogViewerPanel } from './webview/LogViewerPanel';
+import { OrgSession } from './salesforce/OrgSession';
+import { createStatusBar } from './commands/statusBar';
 import { LANGUAGE_ID, ViewIds } from './constants';
 
 export function activate(context: vscode.ExtensionContext): void {
   logger.info('Apex Log Lens activating');
 
-  // Sidebar outline provider — register before commands so LogViewerPanel can update it
+  // Status bar — shows connection state, always visible
+  createStatusBar(context);
+
+  // Sidebar outline
   const outlineProvider = new LogOutlineProvider();
   LogViewerPanel.registerOutlineProvider(outlineProvider);
-
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider(ViewIds.OUTLINE, outlineProvider)
   );
@@ -20,7 +24,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // All commands
   context.subscriptions.push(...registerCommands(context.extensionUri));
 
-  // CodeLens: "Open in Log Lens" on first line of .log files
+  // CodeLens on .log files
   context.subscriptions.push(
     vscode.languages.registerCodeLensProvider(
       { language: LANGUAGE_ID },
@@ -28,7 +32,7 @@ export function activate(context: vscode.ExtensionContext): void {
     )
   );
 
-  // Auto-open viewer when a .log file is opened (if setting enabled)
+  // Auto-open viewer on .log file open (if setting enabled)
   context.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument((doc) => {
       const config = vscode.workspace.getConfiguration('sflog');
@@ -43,6 +47,8 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {
+  // Clear in-memory session — no credentials linger after VS Code closes
+  OrgSession.disconnect();
   LogViewerPanel.closeIfOpen();
   logger.info('Apex Log Lens deactivated');
   logger.dispose();

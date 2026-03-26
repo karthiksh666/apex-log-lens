@@ -59,8 +59,26 @@
       {
         "command": "sflog.clearPanel",
         "title": "Close Viewer",
-        "category": "Salesforce Log Viewer",
+        "category": "Apex Log Lens",
         "icon": "$(close)"
+      },
+      {
+        "command": "sflog.connectOrg",
+        "title": "Connect to Salesforce Org",
+        "category": "Apex Log Lens",
+        "icon": "$(cloud)"
+      },
+      {
+        "command": "sflog.disconnectOrg",
+        "title": "Disconnect from Org",
+        "category": "Apex Log Lens",
+        "icon": "$(cloud-offline)"
+      },
+      {
+        "command": "sflog.fetchLogs",
+        "title": "Fetch My Logs from Org",
+        "category": "Apex Log Lens",
+        "icon": "$(cloud-download)"
       }
     ],
     "menus": {
