@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { buildTransactions } from './TransactionBuilder';
 import { LogEventKind, LogCategory, LogSeverity } from './types';
 import type {
   ParsedLog,
@@ -134,7 +134,7 @@ export function parseLog(
 
   const entryPoint = rootExecUnits[0]?.entryPoint ?? 'Unknown';
 
-  return {
+  const partialLog = {
     filePath,
     fileSizeBytes,
     rawLineCount: lines.length,
@@ -146,6 +146,7 @@ export function parseLog(
     governorLimits: mergedLimits,
     executionUnits: rootExecUnits,
     unparsedLines,
+    transactions: [] as import('./transaction-types').Transaction[],
     summary: {
       entryPoint,
       totalDurationMs,
@@ -157,6 +158,11 @@ export function parseLog(
       rawLineCount: lines.length,
     },
   };
+
+  // Build transactions after the flat parse is complete
+  partialLog.transactions = buildTransactions(partialLog);
+
+  return partialLog;
 
   // ─── Inner helpers ──────────────────────────────────────────────────────────
 

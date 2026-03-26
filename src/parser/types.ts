@@ -223,6 +223,8 @@ export interface ParsedLog {
   summary: LogSummary;
   /** Lines that did not match the log format */
   unparsedLines: UnparsedLine[];
+  /** High-level transaction groupings built by TransactionBuilder */
+  transactions: import('./transaction-types').Transaction[];
 }
 
 // ─── Parser options ───────────────────────────────────────────────────────────

@@ -1,18 +1,18 @@
 import type { ParsedLog } from '../../parser/types';
 import { renderSummaryHeader } from './components/SummaryHeader';
+import { renderTransactions } from './renderer/TransactionRenderer';
+import { renderTriggers } from './renderer/TriggersRenderer';
+import { renderFlows } from './renderer/FlowsRenderer';
+import { renderCallouts } from './renderer/CalloutsRenderer';
+import { renderValidation } from './renderer/ValidationRenderer';
+import { renderWorkflow } from './renderer/WorkflowRenderer';
+import { renderDebug } from './renderer/DebugRenderer';
 import { renderTimeline } from './renderer/TimelineRenderer';
 import { renderSoql } from './renderer/SoqlRenderer';
 import { renderDml } from './renderer/DmlRenderer';
 import { renderErrors } from './renderer/ErrorRenderer';
 import { renderLimits } from './renderer/LimitsRenderer';
 import { renderRaw } from './renderer/RawRenderer';
-
-/**
- * WebView entry point — runs in the browser (sandboxed iframe) context.
- *
- * The parsed log is seeded via a JSON script tag by HtmlBuilder.ts,
- * so we can render immediately without waiting for a postMessage.
- */
 
 declare const acquireVsCodeApi: () => {
   postMessage: (msg: unknown) => void;
@@ -22,20 +22,15 @@ declare const acquireVsCodeApi: () => {
 
 const vscode = acquireVsCodeApi();
 
-// ─── Boot ────────────────────────────────────────────────────────────────────
-
 function boot(): void {
   const dataEl = document.getElementById('sflog-data');
-  if (!dataEl) {
-    renderError('No log data found. Please re-open the file.');
-    return;
-  }
+  if (!dataEl) { renderFatalError('No log data found.'); return; }
 
   let parsedLog: ParsedLog;
   try {
     parsedLog = JSON.parse(dataEl.textContent ?? '{}') as ParsedLog;
   } catch {
-    renderError('Failed to parse log data. Please re-open the file.');
+    renderFatalError('Failed to parse log data.');
     return;
   }
 
@@ -43,110 +38,108 @@ function boot(): void {
   vscode.postMessage({ type: 'ready' });
 }
 
-// ─── App render ──────────────────────────────────────────────────────────────
-
 function renderApp(log: ParsedLog): void {
   const app = document.getElementById('app')!;
 
-  app.innerHTML = /* html */ `
+  const txCount   = log.transactions.length;
+  const trigCount = log.transactions.flatMap(t => t.phases).filter(p => p.type === 'BEFORE_TRIGGER' || p.type === 'AFTER_TRIGGER').length;
+  const flowCount = log.transactions.flatMap(t => t.phases).filter(p => p.type === 'FLOW' || p.type === 'PROCESS_BUILDER').length;
+  const callCount = log.transactions.flatMap(t => t.callouts).length;
+  const valCount  = log.transactions.flatMap(t => t.validationResults).length;
+  const wfCount   = log.transactions.flatMap(t => t.phases).filter(p => p.type === 'WORKFLOW_RULE').length;
+  const dbgCount  = [...new Set(log.transactions.flatMap(t => t.debugStatements).map(d => `${d.lineNumber}-${d.message}`))].length;
+
+  const tabs = [
+    { id: 'transactions', label: 'Transactions',  badge: txCount,                      errorBadge: log.summary.errorCount > 0 },
+    { id: 'triggers',     label: 'Triggers',       badge: trigCount,                    errorBadge: false },
+    { id: 'flows',        label: 'Flows',           badge: flowCount,                   errorBadge: false },
+    { id: 'callouts',     label: 'Callouts',        badge: callCount,                   errorBadge: false },
+    { id: 'validation',   label: 'Validation',      badge: valCount,                    errorBadge: false },
+    { id: 'workflow',     label: 'Workflow',         badge: wfCount,                    errorBadge: false },
+    { id: 'debug',        label: 'Debug',            badge: dbgCount,                   errorBadge: false },
+    { id: 'timeline',     label: 'Timeline',         badge: log.summary.totalEvents,    errorBadge: false },
+    { id: 'soql',         label: 'SOQL',             badge: log.summary.soqlCount,      errorBadge: false },
+    { id: 'dml',          label: 'DML',              badge: log.summary.dmlCount,       errorBadge: false },
+    { id: 'errors',       label: 'Errors',           badge: log.summary.errorCount,     errorBadge: log.summary.errorCount > 0 },
+    { id: 'limits',       label: 'Limits',           badge: null,                       errorBadge: log.governorLimits.hasCritical },
+    { id: 'raw',          label: 'Raw',              badge: null,                       errorBadge: false },
+  ];
+
+  const tabBtns = tabs.map((t, i) => /* html */`
+    <button class="tab-btn ${i === 0 ? 'active' : ''} ${t.errorBadge ? 'has-errors' : ''}"
+            data-tab="${t.id}" role="tab" aria-selected="${i === 0}">
+      ${t.label}
+      ${t.badge !== null ? `<span class="badge ${t.errorBadge ? 'badge-error' : ''}">${t.badge}</span>` : ''}
+    </button>
+  `).join('');
+
+  const tabPanes = tabs.map((t, i) => /* html */`
+    <div id="tab-${t.id}" class="tab-pane ${i === 0 ? 'active' : 'hidden'}"></div>
+  `).join('');
+
+  app.innerHTML = /* html */`
     <div class="sflog-app">
       <div id="summary-header"></div>
-      <div class="tab-bar" role="tablist">
-        <button class="tab-btn active" data-tab="timeline" role="tab" aria-selected="true">
-          Timeline
-        </button>
-        <button class="tab-btn" data-tab="soql" role="tab" aria-selected="false">
-          SOQL <span class="badge">${log.soqlStatements.length}</span>
-        </button>
-        <button class="tab-btn" data-tab="dml" role="tab" aria-selected="false">
-          DML <span class="badge">${log.dmlStatements.length}</span>
-        </button>
-        <button class="tab-btn ${log.errors.length > 0 ? 'has-errors' : ''}" data-tab="errors" role="tab" aria-selected="false">
-          Errors ${log.errors.length > 0 ? `<span class="badge badge-error">${log.errors.length}</span>` : '<span class="badge">0</span>'}
-        </button>
-        <button class="tab-btn" data-tab="limits" role="tab" aria-selected="false">
-          Limits
-        </button>
-        <button class="tab-btn" data-tab="raw" role="tab" aria-selected="false">
-          Raw
-        </button>
-      </div>
-      <div class="tab-content">
-        <div id="tab-timeline" class="tab-pane active"></div>
-        <div id="tab-soql" class="tab-pane hidden"></div>
-        <div id="tab-dml" class="tab-pane hidden"></div>
-        <div id="tab-errors" class="tab-pane hidden"></div>
-        <div id="tab-limits" class="tab-pane hidden"></div>
-        <div id="tab-raw" class="tab-pane hidden"></div>
-      </div>
+      <div class="tab-bar" role="tablist">${tabBtns}</div>
+      <div class="tab-content">${tabPanes}</div>
     </div>
   `;
 
-  // Render summary header
   document.getElementById('summary-header')!.innerHTML = renderSummaryHeader(log);
 
-  // Render all tab contents upfront (they're hidden via CSS, no re-render on tab switch)
-  document.getElementById('tab-timeline')!.innerHTML = renderTimeline(log);
-  document.getElementById('tab-soql')!.innerHTML = renderSoql(log);
-  document.getElementById('tab-dml')!.innerHTML = renderDml(log);
-  document.getElementById('tab-errors')!.innerHTML = renderErrors(log);
-  document.getElementById('tab-limits')!.innerHTML = renderLimits(log);
-  document.getElementById('tab-raw')!.innerHTML = renderRaw(log);
+  // Render all tabs
+  document.getElementById('tab-transactions')!.innerHTML = renderTransactions(log);
+  document.getElementById('tab-triggers')!.innerHTML     = renderTriggers(log);
+  document.getElementById('tab-flows')!.innerHTML        = renderFlows(log);
+  document.getElementById('tab-callouts')!.innerHTML     = renderCallouts(log);
+  document.getElementById('tab-validation')!.innerHTML   = renderValidation(log);
+  document.getElementById('tab-workflow')!.innerHTML     = renderWorkflow(log);
+  document.getElementById('tab-debug')!.innerHTML        = renderDebug(log);
+  document.getElementById('tab-timeline')!.innerHTML     = renderTimeline(log);
+  document.getElementById('tab-soql')!.innerHTML         = renderSoql(log);
+  document.getElementById('tab-dml')!.innerHTML          = renderDml(log);
+  document.getElementById('tab-errors')!.innerHTML       = renderErrors(log);
+  document.getElementById('tab-limits')!.innerHTML       = renderLimits(log);
+  document.getElementById('tab-raw')!.innerHTML          = renderRaw(log);
 
   // Tab switching
-  document.querySelectorAll<HTMLButtonElement>('.tab-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const tab = btn.dataset['tab']!;
-      switchTab(tab);
-    });
+  document.querySelectorAll<HTMLButtonElement>('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset['tab']!));
   });
 
-  // Jump-to-line on event rows
-  document.addEventListener('click', (e) => {
+  // Jump-to-line
+  document.addEventListener('click', e => {
     const target = (e.target as HTMLElement).closest('[data-line]') as HTMLElement | null;
     if (target?.dataset['line']) {
-      vscode.postMessage({
-        type: 'jumpToLine',
-        lineNumber: parseInt(target.dataset['line'], 10),
-        filePath: log.filePath,
-      });
+      vscode.postMessage({ type: 'jumpToLine', lineNumber: parseInt(target.dataset['line']!, 10), filePath: log.filePath });
     }
   });
 
-  // Copy on copy buttons
-  document.addEventListener('click', (e) => {
+  // Copy
+  document.addEventListener('click', e => {
     const btn = (e.target as HTMLElement).closest('[data-copy]') as HTMLElement | null;
     if (btn?.dataset['copy']) {
       vscode.postMessage({ type: 'copyToClipboard', text: btn.dataset['copy'] });
     }
   });
-
-  // If there are errors, highlight the errors tab
-  if (log.errors.length > 0) {
-    // Optionally auto-switch to errors tab
-    // switchTab('errors');
-  }
 }
 
 function switchTab(tab: string): void {
-  document.querySelectorAll('.tab-btn').forEach((btn) => {
-    const isActive = (btn as HTMLElement).dataset['tab'] === tab;
-    btn.classList.toggle('active', isActive);
-    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    const active = (btn as HTMLElement).dataset['tab'] === tab;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
   });
-
-  document.querySelectorAll('.tab-pane').forEach((pane) => {
-    pane.classList.toggle('hidden', !pane.id.endsWith(tab));
-    pane.classList.toggle('active', pane.id.endsWith(tab));
+  document.querySelectorAll('.tab-pane').forEach(pane => {
+    const active = pane.id === `tab-${tab}`;
+    pane.classList.toggle('hidden', !active);
+    pane.classList.toggle('active', active);
   });
 }
 
-function renderError(message: string): void {
-  const app = document.getElementById('app')!;
-  app.innerHTML = `<div class="error-screen"><p>${message}</p></div>`;
+function renderFatalError(msg: string): void {
+  document.getElementById('app')!.innerHTML = `<div class="error-screen"><p>${msg}</p></div>`;
 }
-
-// ─── Start ────────────────────────────────────────────────────────────────────
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', boot);
