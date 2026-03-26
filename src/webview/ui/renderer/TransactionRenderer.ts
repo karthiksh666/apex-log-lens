@@ -3,14 +3,16 @@ import type { Transaction, ExecutionPhase, PhaseType } from '../../../parser/tra
 import { phaseTypeClass } from '../../../parser/PhaseClassifier';
 import { formatDuration } from '../../../utils/TimeUtils';
 
+/** Number of cards rendered immediately; the rest load on scroll. */
+export const TX_INITIAL_BATCH = 20;
+export const TX_SCROLL_BATCH  = 20;
+
 /**
  * Execution tab — the primary view.
  *
- * Each Salesforce transaction is rendered as a causal tree:
- * the root is the triggering DML / script, and every child node
- * shows WHAT fired it (via a connector label) and WHAT happened
- * inside (queries, writes, errors). Clicking any row opens its
- * detail panel inline.
+ * Renders the first TX_INITIAL_BATCH transaction cards immediately.
+ * Remaining cards are loaded progressively as the user scrolls via
+ * an IntersectionObserver set up in main.ts (no DOM bloat on big logs).
  */
 export function renderTransactions(log: ParsedLog): string {
   if (log.transactions.length === 0) {
@@ -21,7 +23,9 @@ export function renderTransactions(log: ParsedLog): string {
     </div>`;
   }
 
-  const cards = log.transactions.map((tx, i) => renderTransactionCard(tx, i + 1)).join('');
+  const initial  = log.transactions.slice(0, TX_INITIAL_BATCH);
+  const hasMore  = log.transactions.length > TX_INITIAL_BATCH;
+  const cards    = initial.map((tx, i) => renderTransactionCard(tx, i + 1)).join('');
 
   return /* html */`
     <div class="transactions-view">
@@ -32,11 +36,15 @@ export function renderTransactions(log: ParsedLog): string {
       <div class="tx-list" id="tx-list">
         ${cards}
       </div>
+      ${hasMore ? /* html */`
+        <div id="tx-sentinel" data-next="${TX_INITIAL_BATCH}" style="height:1px"></div>
+        <div class="tx-loading-more">Loading more executions…</div>
+      ` : ''}
     </div>
   `;
 }
 
-function renderTransactionCard(tx: Transaction, index: number): string {
+export function renderTransactionCard(tx: Transaction, index: number): string {
   const isError   = tx.hasErrors;
   const isWarning = !tx.hasErrors && tx.hasSlow;
 

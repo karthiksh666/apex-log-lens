@@ -29,9 +29,10 @@ export function buildHtml(
     `font-src ${webview.cspSource}`,
   ].join('; ');
 
-  // Serialize the parsed log as JSON — large logs can be big, but this avoids
-  // a separate postMessage round-trip on first render.
-  const serialized = JSON.stringify(parsedLog);
+  // Serialize a slimmed-down version of the log.
+  // Raw allEvents / phase.events / executionUnits are stripped to keep
+  // the payload small for large (10 MB+) logs.
+  const serialized = JSON.stringify(slimForWebview(parsedLog));
 
   return /* html */ `<!DOCTYPE html>
 <html lang="en">
@@ -53,6 +54,43 @@ export function buildHtml(
   <script nonce="${nonce}" src="${webviewScriptUri}"></script>
 </body>
 </html>`;
+}
+
+/**
+ * Strip fields that are large and unused in the webview before serialization.
+ *
+ * Savings for a 10 MB log (≈50 k events, 200 phases):
+ *   phase.events  → main culprit — each phase duplicates all its raw events
+ *   allEvents     → kept but slimmed to {lineNumber, raw} for the Raw tab
+ *   executionUnits → internal tree, not rendered in any tab
+ *
+ * Per-phase and global arrays are also capped so a pathological log
+ * (e.g. 100 k SOQL) cannot produce a 500 MB payload.
+ */
+function slimForWebview(log: ParsedLog): unknown {
+  const CAP_PER_PHASE_SOQL  = 500;
+  const CAP_PER_PHASE_DEBUG = 300;
+  const CAP_GLOBAL          = 2_000;
+
+  return {
+    ...log,
+    // RawRenderer only needs lineNumber + raw
+    allEvents: log.allEvents.map(e => ({ lineNumber: e.lineNumber, raw: e.raw })),
+    // Not rendered anywhere
+    executionUnits: [],
+    // Global arrays capped
+    soqlStatements: log.soqlStatements.slice(0, CAP_GLOBAL),
+    dmlStatements:  log.dmlStatements.slice(0, CAP_GLOBAL),
+    transactions: log.transactions.map(tx => ({
+      ...tx,
+      phases: tx.phases.map(p => ({
+        ...p,
+        events:          [],   // strip — not used in any renderer
+        soqlStatements:  p.soqlStatements.slice(0, CAP_PER_PHASE_SOQL),
+        debugStatements: p.debugStatements.slice(0, CAP_PER_PHASE_DEBUG),
+      })),
+    })),
+  };
 }
 
 /** Cryptographically random nonce for Content Security Policy */

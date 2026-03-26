@@ -1,6 +1,6 @@
 import type { ParsedLog } from '../../parser/types';
 import { renderSummaryHeader } from './components/SummaryHeader';
-import { renderTransactions }  from './renderer/TransactionRenderer';
+import { renderTransactions, renderTransactionCard, TX_SCROLL_BATCH } from './renderer/TransactionRenderer';
 import { renderIssues }        from './renderer/IssuesRenderer';
 import { renderData }          from './renderer/DataRenderer';
 import { renderAutomation }    from './renderer/AutomationRenderer';
@@ -141,6 +141,7 @@ function renderApp(log: ParsedLog): void {
   }
 
   renderTab(tabs[0].id);
+  setupTxLazyLoad(log);
 
   document.querySelectorAll<HTMLButtonElement>('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -148,6 +149,8 @@ function renderApp(log: ParsedLog): void {
       renderTab(tab);
       switchTab(tab);
       if (tab === 'limits' && orgConnected) triggerOrgDataFetch();
+      // Re-attach lazy loader if the execution tab was just rendered
+      if (tab === 'flow') setupTxLazyLoad(log);
     });
   });
 
@@ -190,10 +193,11 @@ function renderApp(log: ParsedLog): void {
     if (card) card.classList.toggle('collapsed');
   });
 
-  // Flow tab search
+  // Flow tab search — flush all pending cards first so search covers everything
   document.addEventListener('input', e => {
     const input = e.target as HTMLElement;
     if (input.id !== 'tx-search') return;
+    flushTxCards(log);
     const q = (input as HTMLInputElement).value.toLowerCase();
     document.querySelectorAll<HTMLElement>('.tx-card').forEach(card => {
       card.classList.toggle('hidden', !!q && !(card.dataset['searchText'] ?? '').toLowerCase().includes(q));
@@ -230,6 +234,85 @@ function switchTab(tab: string): void {
 
 function renderFatalError(msg: string): void {
   document.getElementById('app')!.innerHTML = `<div class="error-screen"><p>${msg}</p></div>`;
+}
+
+// ── Lazy transaction loading ────────────────────────────────────────────────
+
+let _txObserver: IntersectionObserver | null = null;
+
+/**
+ * Attaches an IntersectionObserver to the #tx-sentinel element.
+ * When the sentinel scrolls into view, the next batch of cards is appended.
+ * Safe to call multiple times — disconnects any previous observer first.
+ */
+function setupTxLazyLoad(log: ParsedLog): void {
+  _txObserver?.disconnect();
+  _txObserver = null;
+
+  const sentinel = document.getElementById('tx-sentinel') as HTMLElement | null;
+  if (!sentinel) return;
+
+  _txObserver = new IntersectionObserver(entries => {
+    if (!entries[0].isIntersecting) return;
+
+    const next  = parseInt(sentinel.dataset['next'] ?? '20', 10);
+    const batch = log.transactions.slice(next, next + TX_SCROLL_BATCH);
+    if (batch.length === 0) {
+      _txObserver?.disconnect();
+      sentinel.remove();
+      document.querySelector('.tx-loading-more')?.remove();
+      return;
+    }
+
+    const list = document.getElementById('tx-list');
+    if (!list) return;
+
+    batch.forEach((tx, i) => {
+      const wrap = document.createElement('div');
+      wrap.innerHTML = renderTransactionCard(tx, next + i + 1);
+      const card = wrap.firstElementChild;
+      if (card) list.appendChild(card);
+    });
+
+    sentinel.dataset['next'] = String(next + batch.length);
+
+    if (next + batch.length >= log.transactions.length) {
+      _txObserver?.disconnect();
+      sentinel.remove();
+      document.querySelector('.tx-loading-more')?.remove();
+    }
+  }, { rootMargin: '400px' });
+
+  _txObserver.observe(sentinel);
+}
+
+/**
+ * Immediately renders all remaining unrendered transaction cards.
+ * Called before search so every card is in the DOM before filtering.
+ */
+function flushTxCards(log: ParsedLog): void {
+  const sentinel = document.getElementById('tx-sentinel') as HTMLElement | null;
+  if (!sentinel) return;
+
+  _txObserver?.disconnect();
+  _txObserver = null;
+
+  const next = parseInt(sentinel.dataset['next'] ?? '20', 10);
+  const remaining = log.transactions.slice(next);
+  const list = document.getElementById('tx-list');
+  if (!list || remaining.length === 0) { sentinel.remove(); document.querySelector('.tx-loading-more')?.remove(); return; }
+
+  const fragment = document.createDocumentFragment();
+  remaining.forEach((tx, i) => {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = renderTransactionCard(tx, next + i + 1);
+    const card = wrap.firstElementChild;
+    if (card) fragment.appendChild(card);
+  });
+  list.appendChild(fragment);
+
+  sentinel.remove();
+  document.querySelector('.tx-loading-more')?.remove();
 }
 
 function escHtml(s: string): string {
