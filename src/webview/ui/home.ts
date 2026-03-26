@@ -1,4 +1,4 @@
-import type { SerializedLog } from '../HomeViewProvider';
+import type { SerializedLog, LocalFileInfo } from '../HomeViewProvider';
 
 declare const acquireVsCodeApi: () => {
   postMessage: (msg: unknown) => void;
@@ -18,8 +18,10 @@ interface OrgStatus {
 
 let _orgStatus: OrgStatus = { connected: false, displayName: null, userName: null, instanceUrl: null };
 let _logs: SerializedLog[] = [];
+let _localFiles: LocalFileInfo[] = [];
 let _loading = false;
 let _openingLogId: string | null = null;
+let _openingLocalFile: string | null = null;
 let _logError: string | null = null;
 let _searchQuery = '';
 
@@ -52,9 +54,11 @@ function boot(): void {
         break;
 
       case 'logList':
-        _loading     = false;
-        _logError    = null;
-        _logs        = (msg.logs as SerializedLog[]) ?? [];
+        _loading          = false;
+        _logError         = null;
+        _openingLogId     = null;
+        _openingLocalFile = null;
+        _logs             = (msg.logs as SerializedLog[]) ?? [];
         render();
         break;
 
@@ -64,8 +68,18 @@ function boot(): void {
         render();
         break;
 
+      case 'localFiles':
+        _localFiles = (msg.files as LocalFileInfo[]) ?? [];
+        render();
+        break;
+
       case 'openingLog':
         _openingLogId = (msg.logId as string) ?? null;
+        render();
+        break;
+
+      case 'openingLocalFile':
+        _openingLocalFile = (msg.filePath as string) ?? null;
         render();
         break;
     }
@@ -129,6 +143,7 @@ function renderDisconnected(): string {
         <li><span class="step-num">3</span>Click any log to open it in the viewer</li>
       </ul>
     </div>
+    ${renderLocalFilesSection()}
   `;
 }
 
@@ -188,6 +203,7 @@ function renderConnected(): string {
       ${listContent}
     </div>
 
+    ${renderLocalFilesSection()}
     <div class="footer-note">Auto-refreshes every 30 s · session only</div>
   `;
 }
@@ -205,6 +221,52 @@ function renderLogItem(log: SerializedLog): string {
       <div class="log-item-body">
         <span class="log-op">${escHtml(opShort || log.application)}</span>
         <span class="log-meta">${escHtml(time)} · ${escHtml(size)} · ${escHtml(log.durationMs.toString())}ms</span>
+      </div>
+      ${isOpening
+        ? `<span class="log-open-spinner"><div class="spinner spinner-sm"></div></span>`
+        : `<span class="log-chevron">›</span>`
+      }
+    </div>
+  `;
+}
+
+// ── Local files section ───────────────────────────────────────────────────────
+
+function renderLocalFilesSection(): string {
+  if (_localFiles.length === 0) return '';
+
+  const filtered = _localFiles.filter(f => {
+    if (!_searchQuery) return true;
+    return f.name.toLowerCase().includes(_searchQuery.toLowerCase());
+  });
+
+  if (filtered.length === 0 && _searchQuery) return '';
+
+  const items = filtered.map(renderLocalFileItem).join('');
+  return /* html */`
+    <div class="section-header">
+      <span class="section-icon">📂</span>
+      <span class="section-title">Workspace Files</span>
+      <span class="section-badge">${filtered.length}</span>
+    </div>
+    <div class="log-list local-file-list">
+      ${items}
+    </div>
+  `;
+}
+
+function renderLocalFileItem(file: LocalFileInfo): string {
+  const isOpening = _openingLocalFile === file.filePath;
+  const time      = relativeTime(new Date(file.mtimeMs));
+  const size      = formatBytes(file.sizeBytes);
+
+  return /* html */`
+    <div class="log-item local-file-item ${isOpening ? 'log-item-opening' : ''}"
+         data-file-path="${escHtml(file.filePath)}" role="button" tabindex="0">
+      <span class="log-status-dot dot-file"></span>
+      <div class="log-item-body">
+        <span class="log-op">${escHtml(file.name)}</span>
+        <span class="log-meta">${escHtml(time)} · ${escHtml(size)}</span>
       </div>
       ${isOpening
         ? `<span class="log-open-spinner"><div class="spinner spinner-sm"></div></span>`
@@ -244,6 +306,13 @@ function attachListeners(): void {
         logId:     logItem.dataset['logId'],
         sizeBytes: parseInt(logItem.dataset['size'] ?? '0', 10),
       });
+      return;
+    }
+
+    if (logItem?.dataset['filePath']) {
+      _openingLocalFile = logItem.dataset['filePath'];
+      render();
+      vscode.postMessage({ type: 'openLocalFile', filePath: logItem.dataset['filePath'] });
       return;
     }
   });

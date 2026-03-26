@@ -509,6 +509,50 @@ body {
   animation: fadeSlideIn 0.3s ease both;
 }
 
+/* ── Section header (Local Files, etc.) ─────────────────────────────────────── */
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px 5px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: rgba(255,255,255,0.02);
+}
+
+.section-icon { font-size: 12px; }
+
+.section-title {
+  flex: 1;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.section-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.08);
+  color: var(--fg-muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.local-file-list { max-height: 220px; }
+
+.dot-file {
+  background: #7c6af5;
+  box-shadow: 0 0 4px rgba(124,106,245,0.6);
+}
+
 /* ── Footer note ─────────────────────────────────────────────────────────────── */
 
 .footer-note {

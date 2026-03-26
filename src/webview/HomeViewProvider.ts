@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { OrgSession } from '../salesforce/OrgSession';
 import { fetchLogList, fetchLogBody, type OrgLogEntry } from '../salesforce/LogFetcher';
 import { SalesforceApiError } from '../salesforce/SalesforceClient';
@@ -24,6 +26,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
   private _view: vscode.WebviewView | null = null;
   private _extensionUri: vscode.Uri;
   private _refreshTimer: ReturnType<typeof setInterval> | null = null;
+  private _fileWatcher: vscode.FileSystemWatcher | null = null;
 
   constructor(extensionUri: vscode.Uri) {
     this._extensionUri = extensionUri;
@@ -58,6 +61,7 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       switch (msg.type) {
         case 'ready':
           this._pushOrgStatus();
+          await this._fetchAndSendLocalFiles();
           if (OrgSession.isConnected) {
             await this._fetchAndSendLogs();
             this._startAutoRefresh();
@@ -82,21 +86,40 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
 
         case 'fetchLogs':
         case 'refresh':
-          await this._fetchAndSendLogs();
+          await Promise.all([
+            this._fetchAndSendLogs(),
+            this._fetchAndSendLocalFiles(),
+          ]);
           break;
 
         case 'openLog': {
-          const logId    = msg.logId as string;
-          const sizePad  = (msg.sizeBytes as number) ?? 0;
+          const logId   = msg.logId as string;
+          const sizePad = (msg.sizeBytes as number) ?? 0;
           await this._openLog(logId, sizePad);
+          break;
+        }
+
+        case 'openLocalFile': {
+          const filePath = msg.filePath as string;
+          await this._openLocalFile(filePath);
           break;
         }
       }
     });
 
+    // Watch workspace for new/changed .log files
+    this._fileWatcher?.dispose();
+    this._fileWatcher = vscode.workspace.createFileSystemWatcher('**/*.log');
+    const onFileChange = () => { void this._fetchAndSendLocalFiles(); };
+    this._fileWatcher.onDidCreate(onFileChange);
+    this._fileWatcher.onDidChange(onFileChange);
+    this._fileWatcher.onDidDelete(onFileChange);
+
     // Clean up timer when the view is hidden/disposed
     webviewView.onDidDispose(() => {
       this._stopAutoRefresh();
+      this._fileWatcher?.dispose();
+      this._fileWatcher = null;
       this._view = null;
     });
 
@@ -136,6 +159,53 @@ export class HomeViewProvider implements vscode.WebviewViewProvider {
       const msg = err instanceof SalesforceApiError ? err.message : 'Failed to fetch logs';
       this._view?.webview.postMessage({ type: 'logError', message: msg });
       logger.error('HomeView: fetch logs failed', err);
+    }
+  }
+
+  private async _fetchAndSendLocalFiles(): Promise<void> {
+    if (!this._view) return;
+    try {
+      const uris = await vscode.workspace.findFiles('**/*.log', '**/node_modules/**', 40);
+      const files: LocalFileInfo[] = uris
+        .map(uri => {
+          try {
+            const stat = fs.statSync(uri.fsPath);
+            return {
+              filePath:  uri.fsPath,
+              name:      path.basename(uri.fsPath, '.log'),
+              sizeBytes: stat.size,
+              mtimeMs:   stat.mtimeMs,
+            };
+          } catch {
+            return null;
+          }
+        })
+        .filter((f): f is LocalFileInfo => f !== null)
+        .sort((a, b) => b.mtimeMs - a.mtimeMs)
+        .slice(0, 20);
+
+      this._view?.webview.postMessage({ type: 'localFiles', files });
+    } catch (err) {
+      logger.error('HomeView: scan local files failed', err);
+    }
+  }
+
+  private async _openLocalFile(filePath: string): Promise<void> {
+    if (!this._view) return;
+    this._view.webview.postMessage({ type: 'openingLocalFile', filePath });
+
+    try {
+      const raw = fs.readFileSync(filePath, 'utf8');
+      const stat = fs.statSync(filePath);
+      const config = vscode.workspace.getConfiguration('sflog');
+      const includeMethodEntryExit: boolean = config.get('showMethodEntryExit') ?? false;
+
+      const parsedLog = parseLog(raw, filePath, stat.size, { includeMethodEntryExit });
+      LogViewerPanel.open(this._extensionUri, parsedLog);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to open file';
+      this._view?.webview.postMessage({ type: 'logError', message: msg });
+      logger.error('HomeView: open local file failed', err);
     }
   }
 
@@ -251,4 +321,11 @@ export interface SerializedLog {
   application:  string;
   durationMs:   number;
   location:     string;
+}
+
+export interface LocalFileInfo {
+  filePath:  string;
+  name:      string;
+  sizeBytes: number;
+  mtimeMs:   number;
 }
