@@ -1078,6 +1078,56 @@ code, pre, .detail-mono, .query-text, .raw-text {
 
 .da-row:hover td { background: var(--vscode-list-hoverBackground); }
 
+/* ─── Segment switcher (sub-tabs within a tab) ──────────────────────────────── */
+.seg-bar {
+  display: flex;
+  gap: 4px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.seg-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 14px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 20px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  font-size: 12px;
+  opacity: 0.65;
+  transition: all 0.1s;
+}
+.seg-btn:hover  { opacity: 0.9; }
+.seg-btn.seg-active {
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  border-color: transparent;
+  opacity: 1;
+  font-weight: 600;
+}
+
+.seg-ok { font-size: 10px; color: var(--cat-callout); }
+
+.seg-pane { display: none; }
+.seg-pane-active { display: block; }
+
+.issues-view, .data-tab-view, .auto-tab-view { display: flex; flex-direction: column; }
+
+.limits-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  opacity: 0.5;
+  margin-bottom: 10px;
+}
+.limits-hint { font-size: 12px; opacity: 0.6; padding: 8px 0; }
+
 /* ─── Code Quality tab ───────────────────────────────────────────────────────── */
 .cq-view { display: flex; flex-direction: column; gap: 0; }
 

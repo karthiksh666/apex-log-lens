@@ -1,29 +1,32 @@
 import type { ParsedLog, LimitEntry } from '../../../parser/types';
+import { renderOrgSkeleton, renderOrgContent, type OrgDataPayload } from './OrgRenderer';
 
-export function renderLimits(log: ParsedLog): string {
+export function renderLimits(log: ParsedLog, orgConnected = false, orgDisplayName: string | null = null): string {
   const { governorLimits } = log;
 
-  if (governorLimits.entries.length === 0) {
-    return `<div class="empty-state"><p>No governor limit data found. Make sure your debug log level includes <strong>APEX_PROFILING: FINE</strong> or higher.</p></div>`;
-  }
-
-  const cards = governorLimits.entries.map(renderLimitCard).join('');
-
   const criticalCount = governorLimits.entries.filter((e) => e.severity === 'critical').length;
-  const warningCount = governorLimits.entries.filter((e) => e.severity === 'warning').length;
+  const warningCount  = governorLimits.entries.filter((e) => e.severity === 'warning').length;
 
   const bannerHtml = criticalCount > 0
-    ? `<div class="warning-banner warning-critical">🚨 ${criticalCount} limit${criticalCount > 1 ? 's' : ''} above 80% — risk of LimitException!</div>`
+    ? `<div class="warning-banner warning-critical">🚨 ${criticalCount} per-transaction limit${criticalCount > 1 ? 's' : ''} above 80% — risk of LimitException!</div>`
     : warningCount > 0
-    ? `<div class="warning-banner">⚠ ${warningCount} limit${warningCount > 1 ? 's' : ''} above 50% — monitor closely.</div>`
-    : `<div class="info-banner">✅ All governor limits are within safe range.</div>`;
+    ? `<div class="warning-banner">⚠ ${warningCount} per-transaction limit${warningCount > 1 ? 's' : ''} above 50% — monitor closely.</div>`
+    : `<div class="info-banner">✅ Per-transaction governor limits are within safe range.</div>`;
 
-  return /* html */ `
+  const txLimitsSection = governorLimits.entries.length === 0
+    ? `<div class="limits-hint">No limit data in log. Set <strong>APEX_PROFILING: FINE</strong> or higher in your debug log level.</div>`
+    : /* html */`
+      <div class="limits-section-label">Per-Transaction Limits (from this log)</div>
+      <div class="limits-grid">${governorLimits.entries.map(renderLimitCard).join('')}</div>
+    `;
+
+  return /* html */`
     <div class="limits-view">
       ${bannerHtml}
-      <div class="limits-grid">
-        ${cards}
-      </div>
+      ${txLimitsSection}
+
+      <div class="limits-section-label" style="margin-top:24px">Org-Level Limits &amp; Licenses (live from org)</div>
+      ${renderOrgSkeleton(orgConnected, orgDisplayName)}
     </div>
   `;
 }
