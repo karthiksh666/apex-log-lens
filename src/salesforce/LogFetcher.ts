@@ -190,7 +190,7 @@ export async function fetchOrgData(): Promise<OrgData> {
         remaining: val.Remaining,
         used,
         percentUsed: pct,
-        severity: pct >= 80 ? 'critical' : pct >= 50 ? 'warning' : 'ok',
+        severity: (pct >= 80 ? 'critical' : pct >= 50 ? 'warning' : 'ok') as 'ok' | 'warning' | 'critical',
       };
     })
     .sort((a, b) => b.percentUsed - a.percentUsed);

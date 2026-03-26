@@ -232,7 +232,7 @@ function renderTreeNode(node: TreeNode): string {
     `
     : '';
 
-  return `<div class="etree-node" style="--node-i:${i}">${row}${children}</div>`;
+  return `<div class="etree-node" style="--node-i:${step}">${row}${children}</div>`;
 }
 
 // ─── Phase detail panel ───────────────────────────────────────────────────────

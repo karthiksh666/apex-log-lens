@@ -61,7 +61,7 @@ export function renderCodeQuality(log: ParsedLog): string {
 
 function renderIssueCard(issue: QualityIssue): string {
   const sevIcon  = { critical: '🔴', high: '🟠', medium: '🟡', low: '🔵' }[issue.severity];
-  const catIcon  = { performance: '⚡', limits: '📊', reliability: '🛡', 'best-practice': '✅' }[issue.category];
+  const catIcon  = { performance: '⚡', limits: '📊', reliability: '🛡', 'best-practice': '✅', security: '🔒' }[issue.category as string];
   const sevLabel = issue.severity[0].toUpperCase() + issue.severity.slice(1);
 
   const linesHtml = issue.affectedLines.length > 0
