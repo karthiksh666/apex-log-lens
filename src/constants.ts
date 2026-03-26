@@ -21,6 +21,7 @@ export const ContextKeys = {
 /** View IDs — must match package.json contributes.views */
 export const ViewIds = {
   OUTLINE: 'sflog.outline',
+  HOME:    'sflog.home',
 } as const;
 
 /** Extension-wide constants */

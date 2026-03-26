@@ -4,6 +4,7 @@ import { logger } from './utils/Logger';
 import { LogCodeLensProvider } from './providers/LogCodeLensProvider';
 import { LogOutlineProvider } from './treeview/LogOutlineProvider';
 import { LogViewerPanel } from './webview/LogViewerPanel';
+import { HomeViewProvider } from './webview/HomeViewProvider';
 import { OrgSession } from './salesforce/OrgSession';
 import { createStatusBar } from './commands/statusBar';
 import { LANGUAGE_ID, ViewIds } from './constants';
@@ -14,7 +15,15 @@ export function activate(context: vscode.ExtensionContext): void {
   // Status bar — shows connection state, always visible
   createStatusBar(context);
 
-  // Sidebar outline
+  // Home sidebar (always-visible activity bar panel)
+  const homeProvider = new HomeViewProvider(context.extensionUri);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(ViewIds.HOME, homeProvider, {
+      webviewOptions: { retainContextWhenHidden: true },
+    })
+  );
+
+  // Log outline (explorer sidebar)
   const outlineProvider = new LogOutlineProvider();
   LogViewerPanel.registerOutlineProvider(outlineProvider);
   context.subscriptions.push(

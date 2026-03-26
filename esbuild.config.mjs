@@ -32,16 +32,29 @@ const webviewConfig = {
   external: [], // no externals for browser bundle
 };
 
+// Home sidebar WebView bundle
+const homeConfig = {
+  ...baseConfig,
+  entryPoints: ['src/webview/ui/home.ts'],
+  outfile: 'dist/home.js',
+  format: 'iife',
+  platform: 'browser',
+  target: 'es2022',
+  external: [],
+};
+
 if (isWatch) {
-  const [extCtx, webCtx] = await Promise.all([
+  const [extCtx, webCtx, homeCtx] = await Promise.all([
     esbuild.context(extensionConfig),
     esbuild.context(webviewConfig),
+    esbuild.context(homeConfig),
   ]);
-  await Promise.all([extCtx.watch(), webCtx.watch()]);
+  await Promise.all([extCtx.watch(), webCtx.watch(), homeCtx.watch()]);
   console.log('Watching for changes...');
 } else {
   await Promise.all([
     esbuild.build(extensionConfig),
     esbuild.build(webviewConfig),
+    esbuild.build(homeConfig),
   ]);
 }

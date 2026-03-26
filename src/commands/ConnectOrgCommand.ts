@@ -5,6 +5,7 @@ import { getCliOrgInfo, listCliOrgs } from '../salesforce/CliAuthProvider';
 import { SalesforceApiError } from '../salesforce/SalesforceClient';
 import { logger } from '../utils/Logger';
 import { updateStatusBar } from './statusBar';
+import { HomeViewProvider } from '../webview/HomeViewProvider';
 
 /**
  * Guides the user through connecting to a Salesforce org.
@@ -78,6 +79,7 @@ async function connectViaCli(
         const identity = await validateAndIdentify(info.instanceUrl, info.accessToken);
         OrgSession.connect(info.instanceUrl, info.accessToken, identity);
         updateStatusBar('connected', identity);
+        HomeViewProvider.notifyOrgStatus();
         logger.info(`Connected to org ${identity.orgId} as ${identity.userName}`);
         vscode.window.showInformationMessage(`✅ Connected as ${identity.displayName} · ${identity.instanceUrl}`);
       } catch (err) {
@@ -121,6 +123,7 @@ async function connectViaSessionId(): Promise<void> {
         const identity = await validateAndIdentify(instanceUrl, sessionId.trim());
         OrgSession.connect(instanceUrl, sessionId.trim(), identity);
         updateStatusBar('connected', identity);
+        HomeViewProvider.notifyOrgStatus();
         logger.info(`Connected to ${identity.instanceUrl} as ${identity.userName}`);
         vscode.window.showInformationMessage(`✅ Connected as ${identity.displayName}`);
       } catch (err) {
@@ -146,5 +149,6 @@ function handleConnectError(err: unknown): void {
 export async function disconnectOrgCommand(): Promise<void> {
   OrgSession.disconnect();
   updateStatusBar('disconnected');
+  HomeViewProvider.notifyOrgStatus();
   vscode.window.showInformationMessage('Disconnected from Salesforce org.');
 }
