@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { ParsedLog } from '../parser/types';
+import type { LogOutlineProvider } from '../treeview/LogOutlineProvider';
 import { buildHtml } from './HtmlBuilder';
 import { WebviewMessageHandler } from './WebviewMessageHandler';
 import { ContextKeys } from '../constants';
@@ -14,6 +15,7 @@ import { logger } from '../utils/Logger';
  */
 export class LogViewerPanel {
   private static instance: LogViewerPanel | undefined;
+  private static outlineProvider: LogOutlineProvider | undefined;
 
   private readonly panel: vscode.WebviewPanel;
   private readonly messageHandler: WebviewMessageHandler;
@@ -31,6 +33,7 @@ export class LogViewerPanel {
 
     this.render();
     this.setContextKeys();
+    LogViewerPanel.outlineProvider?.update(parsedLog);
 
     // Re-render when the panel becomes visible again after being hidden
     this.panel.onDidChangeViewState(
@@ -58,6 +61,11 @@ export class LogViewerPanel {
     );
   }
 
+  /** Register the outline provider so the panel can keep it in sync. */
+  static registerOutlineProvider(provider: LogOutlineProvider): void {
+    LogViewerPanel.outlineProvider = provider;
+  }
+
   /** Open a new panel or replace the content of the existing one. */
   static open(
     extensionUri: vscode.Uri,
@@ -65,7 +73,6 @@ export class LogViewerPanel {
     column: vscode.ViewColumn = vscode.ViewColumn.Two
   ): LogViewerPanel {
     if (LogViewerPanel.instance) {
-      // Reuse existing panel — just update its content
       LogViewerPanel.instance.update(parsedLog);
       LogViewerPanel.instance.panel.reveal(column);
       return LogViewerPanel.instance;
@@ -73,11 +80,11 @@ export class LogViewerPanel {
 
     const panel = vscode.window.createWebviewPanel(
       'sflogViewer',
-      'Salesforce Log Viewer',
+      'Apex Log Lens',
       column,
       {
         enableScripts: true,
-        retainContextWhenHidden: false, // We handle re-hydration manually
+        retainContextWhenHidden: false,
         localResourceRoots: [
           vscode.Uri.joinPath(extensionUri, 'dist'),
           vscode.Uri.joinPath(extensionUri, 'resources'),
@@ -94,6 +101,12 @@ export class LogViewerPanel {
     this.parsedLog = parsedLog;
     this.render();
     this.setContextKeys();
+    LogViewerPanel.outlineProvider?.update(parsedLog);
+  }
+
+  /** Dispose the singleton from outside (e.g. clearPanel command). */
+  static closeIfOpen(): void {
+    LogViewerPanel.instance?.dispose();
   }
 
   private render(): void {
@@ -106,7 +119,7 @@ export class LogViewerPanel {
       );
     } catch (err) {
       logger.error('Failed to render WebView', err);
-      vscode.window.showErrorMessage('Salesforce Log Viewer: Failed to render log. See output for details.');
+      vscode.window.showErrorMessage('Apex Log Lens: Failed to render log. See output for details.');
     }
   }
 
@@ -122,9 +135,11 @@ export class LogViewerPanel {
 
   dispose(): void {
     LogViewerPanel.instance = undefined;
+    LogViewerPanel.outlineProvider?.clear();
 
     vscode.commands.executeCommand('setContext', ContextKeys.PANEL_ACTIVE, false);
     vscode.commands.executeCommand('setContext', ContextKeys.HAS_ERRORS, false);
+    vscode.commands.executeCommand('setContext', ContextKeys.LOG_LOADED, false);
 
     this.disposables.forEach((d) => d.dispose());
     this.disposables = [];

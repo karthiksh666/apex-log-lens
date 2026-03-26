@@ -100,8 +100,7 @@ async function openLog(filePath: string, extensionUri: vscode.Uri): Promise<void
 }
 
 function clearPanelCommand(): void {
-  // LogViewerPanel disposes itself; this command is wired via the panel's dispose()
-  vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+  LogViewerPanel.closeIfOpen();
 }
 
 async function exportSummaryCommand(): Promise<void> {

@@ -3,34 +3,32 @@ import { registerCommands } from './commands';
 import { logger } from './utils/Logger';
 import { LogCodeLensProvider } from './providers/LogCodeLensProvider';
 import { LogOutlineProvider } from './treeview/LogOutlineProvider';
+import { LogViewerPanel } from './webview/LogViewerPanel';
 import { LANGUAGE_ID, ViewIds } from './constants';
 
-/**
- * Extension entry point — called by VS Code when the extension activates.
- */
 export function activate(context: vscode.ExtensionContext): void {
-  logger.info('Salesforce Log Viewer activating');
+  logger.info('Apex Log Lens activating');
 
-  // Register all commands
-  const commandDisposables = registerCommands(context.extensionUri);
-  context.subscriptions.push(...commandDisposables);
-
-  // CodeLens: "Open in Log Viewer" on the first line of .log files
-  const codeLensProvider = new LogCodeLensProvider();
-  context.subscriptions.push(
-    vscode.languages.registerCodeLensProvider(
-      { language: LANGUAGE_ID },
-      codeLensProvider
-    )
-  );
-
-  // Sidebar outline tree view
+  // Sidebar outline provider — register before commands so LogViewerPanel can update it
   const outlineProvider = new LogOutlineProvider();
+  LogViewerPanel.registerOutlineProvider(outlineProvider);
+
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider(ViewIds.OUTLINE, outlineProvider)
   );
 
-  // Auto-open: if configured, open viewer when a .log file is opened
+  // All commands
+  context.subscriptions.push(...registerCommands(context.extensionUri));
+
+  // CodeLens: "Open in Log Lens" on first line of .log files
+  context.subscriptions.push(
+    vscode.languages.registerCodeLensProvider(
+      { language: LANGUAGE_ID },
+      new LogCodeLensProvider()
+    )
+  );
+
+  // Auto-open viewer when a .log file is opened (if setting enabled)
   context.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument((doc) => {
       const config = vscode.workspace.getConfiguration('sflog');
@@ -41,10 +39,11 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
-  logger.info('Salesforce Log Viewer activated');
+  logger.info('Apex Log Lens activated');
 }
 
 export function deactivate(): void {
-  logger.info('Salesforce Log Viewer deactivated');
+  LogViewerPanel.closeIfOpen();
+  logger.info('Apex Log Lens deactivated');
   logger.dispose();
 }

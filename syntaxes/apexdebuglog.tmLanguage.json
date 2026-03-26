@@ -1,0 +1,63 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Apex Debug Log",
+  "scopeName": "text.apexdebuglog",
+  "fileTypes": ["log"],
+  "patterns": [
+    { "include": "#fatal-error" },
+    { "include": "#exception" },
+    { "include": "#soql" },
+    { "include": "#dml" },
+    { "include": "#user-debug" },
+    { "include": "#limits" },
+    { "include": "#execution" },
+    { "include": "#timestamp" },
+    { "include": "#log-line" }
+  ],
+  "repository": {
+    "timestamp": {
+      "match": "^(\\d{2}:\\d{2}:\\d{2}\\.\\d+)\\s+(\\(\\d+\\))",
+      "captures": {
+        "1": { "name": "constant.numeric.timestamp.apexdebuglog" },
+        "2": { "name": "comment.block.offset.apexdebuglog" }
+      }
+    },
+    "fatal-error": {
+      "match": "^.*\\|FATAL_ERROR\\|.*$",
+      "name": "markup.deleted.apexdebuglog"
+    },
+    "exception": {
+      "match": "^.*\\|EXCEPTION_THROWN\\|.*$",
+      "name": "invalid.illegal.exception.apexdebuglog"
+    },
+    "soql": {
+      "match": "^.*\\|SOQL_EXECUTE_(?:BEGIN|END)\\|.*$",
+      "name": "markup.changed.soql.apexdebuglog"
+    },
+    "dml": {
+      "match": "^.*\\|DML_(?:BEGIN|END)\\|.*$",
+      "name": "markup.inserted.dml.apexdebuglog"
+    },
+    "user-debug": {
+      "match": "^.*\\|USER_DEBUG\\|.*$",
+      "name": "string.unquoted.debug.apexdebuglog"
+    },
+    "limits": {
+      "match": "^.*\\|LIMIT_USAGE(?:_FOR_NS)?\\|.*$",
+      "name": "keyword.other.limits.apexdebuglog"
+    },
+    "execution": {
+      "match": "^.*\\|(?:EXECUTION_STARTED|EXECUTION_FINISHED|CODE_UNIT_STARTED|CODE_UNIT_FINISHED)\\|.*$",
+      "name": "entity.name.section.execution.apexdebuglog"
+    },
+    "log-line": {
+      "match": "^(\\d{2}:\\d{2}:\\d{2}\\.\\d+)\\s+(\\(\\d+\\))\\|([A-Z_]+)(\\|.*)?$",
+      "captures": {
+        "1": { "name": "constant.numeric.timestamp.apexdebuglog" },
+        "2": { "name": "comment.block.offset.apexdebuglog" },
+        "3": { "name": "support.type.event-type.apexdebuglog" },
+        "4": { "name": "meta.payload.apexdebuglog" }
+      }
+    }
+  }
+}
