@@ -66,11 +66,17 @@ function buildTransaction(events: ParsedEvent[], log: ParsedLog): Transaction | 
   const debugStatements: DebugStatement[] = [];
   const validationResults: ValidationResult[] = [];
 
-  // Stack tracks open CODE_UNIT_STARTED events
+  /**
+   * Phases are pushed in PRE-ORDER (when the unit opens) so that
+   * tx.phases preserves start-order across all depths.
+   * On close we mutate the same object with duration + stats.
+   * Child events are propagated up so parent phases show aggregate counts.
+   */
   type OpenUnit = {
     event: ParsedEvent;
     depth: number;
     phaseId: string;
+    phase: ExecutionPhase;  // reference to the already-pushed phase
     events: ParsedEvent[];
   };
   const unitStack: OpenUnit[] = [];
@@ -80,79 +86,88 @@ function buildTransaction(events: ParsedEvent[], log: ParsedLog): Transaction | 
     const currentDepth = unitStack.length;
     const currentPhaseId = unitStack[unitStack.length - 1]?.phaseId ?? null;
 
-    // ── CODE_UNIT_STARTED → open new phase ──────────────────────────────────
+    // ── CODE_UNIT_STARTED → open new phase, push immediately ────────────────
     if (event.eventType === 'CODE_UNIT_STARTED') {
-      // fields[1] is the entry point (e.g. "AccountTrigger on Account before insert")
       const entryPoint = event.fields[1] ?? event.fields[0] ?? '';
       const classification = classifyPhase(entryPoint);
-
       const phaseId = uid('phase');
-      unitStack.push({
-        event,
+
+      // Create a partial phase and push it now (pre-order) so that
+      // tx.phases preserves the natural execution order across all depths.
+      const phase: ExecutionPhase = {
+        id: phaseId,
+        type: classification.type,
+        name: classification.name,
+        objectName: classification.objectName,
+        operation: classification.operation,
+        entryPoint,
+        startLineNumber: event.lineNumber,
+        endLineNumber: null,
+        wallTime: event.wallTime,
+        timestampMs: event.timestampMs,
+        durationMs: null,
         depth: currentDepth,
-        phaseId,
+        soqlCount: 0,
+        dmlCount: 0,
+        errorCount: 0,
+        calloutCount: 0,
         events: [],
-      });
+        soqlStatements: [],
+        dmlStatements: [],
+        debugStatements: [],
+        errors: [],
+        status: 'ok',
+        isSlow: false,
+      };
+      phases.push(phase);
+
+      unitStack.push({ event, depth: currentDepth, phaseId, phase, events: [] });
       continue;
     }
 
-    // ── CODE_UNIT_FINISHED → close phase ────────────────────────────────────
+    // ── CODE_UNIT_FINISHED → finalise the phase with stats ──────────────────
     if (event.eventType === 'CODE_UNIT_FINISHED') {
       const open = unitStack.pop();
       if (open) {
         const entryPoint = open.event.fields[1] ?? open.event.fields[0] ?? '';
-        const classification = classifyPhase(entryPoint);
         const durationMs = event.durationMs ?? open.event.durationMs ?? null;
 
-        // Build SOQL/DML/debug/errors for this phase from its events
         const phaseEvents = open.events;
-        const phaseSoql = extractSoqlForEvents(phaseEvents, log.soqlStatements);
-        const phaseDml = extractDmlForEvents(phaseEvents, log.dmlStatements);
-        const phaseDebug = extractDebugStatements(phaseEvents, open.phaseId, entryPoint);
+        const phaseSoql   = extractSoqlForEvents(phaseEvents, log.soqlStatements);
+        const phaseDml    = extractDmlForEvents(phaseEvents, log.dmlStatements);
+        const phaseDebug  = extractDebugStatements(phaseEvents, open.phaseId, entryPoint);
         const phaseErrors = log.errors.filter((e) =>
           phaseEvents.some((pe) => pe.lineNumber === e.lineNumber)
         );
 
         debugStatements.push(...phaseDebug);
 
-        const status =
+        const status: 'ok' | 'warning' | 'error' =
           phaseErrors.length > 0
             ? 'error'
             : durationMs !== null && durationMs > SLOW_PHASE_MS
             ? 'warning'
             : 'ok';
 
-        const phase: ExecutionPhase = {
-          id: open.phaseId,
-          type: classification.type,
-          name: classification.name,
-          objectName: classification.objectName,
-          operation: classification.operation,
-          entryPoint,
-          startLineNumber: open.event.lineNumber,
-          endLineNumber: event.lineNumber,
-          wallTime: open.event.wallTime,
-          timestampMs: open.event.timestampMs,
+        // Mutate the phase that was already pushed in pre-order
+        Object.assign(open.phase, {
+          endLineNumber:    event.lineNumber,
           durationMs,
-          depth: open.depth,
-          soqlCount: phaseSoql.length,
-          dmlCount: phaseDml.length,
-          errorCount: phaseErrors.length,
-          calloutCount: 0,
-          events: phaseEvents,
-          soqlStatements: phaseSoql,
-          dmlStatements: phaseDml,
-          debugStatements: phaseDebug,
-          errors: phaseErrors,
+          soqlCount:        phaseSoql.length,
+          dmlCount:         phaseDml.length,
+          errorCount:       phaseErrors.length,
+          events:           phaseEvents,
+          soqlStatements:   phaseSoql,
+          dmlStatements:    phaseDml,
+          debugStatements:  phaseDebug,
+          errors:           phaseErrors,
           status,
           isSlow: durationMs !== null && durationMs > SLOW_PHASE_MS,
-        };
+        });
 
-        // Only top-level phases (depth=0) go into the transaction's phase list
-        if (open.depth === 0) {
-          phases.push(phase);
-        } else if (unitStack.length > 0) {
-          // Add to parent's events (nested)
+        // Propagate events to parent so parent phases show aggregate counts
+        // (parent.soqlCount = its own SOQL + all nested SOQL)
+        if (unitStack.length > 0) {
           unitStack[unitStack.length - 1].events.push(...phaseEvents);
         }
       }
