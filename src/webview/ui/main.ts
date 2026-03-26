@@ -193,14 +193,16 @@ function renderApp(log: ParsedLog): void {
     if (card) card.classList.toggle('collapsed');
   });
 
-  // Flow tab search — flush all pending cards first so search covers everything
+  // Flow tab search — flush all pending cards first so search covers everything.
+  // Uses 'tx-hidden' (not 'hidden') to avoid conflict with tab pane CSS.
   document.addEventListener('input', e => {
     const input = e.target as HTMLElement;
     if (input.id !== 'tx-search') return;
     flushTxCards(log);
-    const q = (input as HTMLInputElement).value.toLowerCase();
+    const q = (input as HTMLInputElement).value.toLowerCase().trim();
     document.querySelectorAll<HTMLElement>('.tx-card').forEach(card => {
-      card.classList.toggle('hidden', !!q && !(card.dataset['searchText'] ?? '').toLowerCase().includes(q));
+      const hit = !q || (card.dataset['searchText'] ?? '').toLowerCase().includes(q);
+      card.classList.toggle('tx-hidden', !hit);
     });
   });
 

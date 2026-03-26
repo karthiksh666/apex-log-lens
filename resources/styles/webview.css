@@ -836,6 +836,25 @@ code, pre, .detail-mono, .query-text, .raw-text {
 .etree-warn { border-color: color-mix(in srgb, var(--cat-db) 50%, var(--vscode-panel-border)) !important;
               background: color-mix(in srgb, var(--cat-db) 6%, var(--vscode-sideBar-background)) !important; }
 
+/* Step counter badge */
+.etree-step {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+.etree-row:hover .etree-step,
+.etree-row.active .etree-step { opacity: 1; background: var(--cat-apex); color: #fff; }
+
 .etree-icon { font-size: 16px; flex-shrink: 0; line-height: 1; }
 
 .etree-info {
@@ -843,7 +862,13 @@ code, pre, .detail-mono, .query-text, .raw-text {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
+}
+.etree-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 .etree-type-label {
   font-size: 9px;
@@ -851,10 +876,19 @@ code, pre, .detail-mono, .query-text, .raw-text {
   letter-spacing: 0.7px;
   opacity: 0.5;
   font-weight: 700;
+  flex-shrink: 0;
 }
 .etree-name {
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Object + operation subtitle */
+.etree-context {
+  font-size: 10px;
+  opacity: 0.5;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -930,7 +964,17 @@ code, pre, .detail-mono, .query-text, .raw-text {
   font-style: italic;
 }
 
-.tx-flow-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; opacity: 0.45; margin-bottom: 4px; font-weight: 700; }
+/* Search hide — separate from .hidden to avoid tab-pane CSS conflicts */
+.tx-card.tx-hidden { display: none; }
+
+.tx-flow-label {
+  font-size: 11px;
+  opacity: 0.6;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+.tx-flow-label strong { opacity: 1; color: var(--cat-apex); }
+.tx-flow-hint-inline  { font-size: 10px; opacity: 0.5; font-style: italic; }
 .tx-flow-hint  { font-size: 10px; opacity: 0.35; margin-top: 4px; font-style: italic; }
 
 /* Phase type left-border colors — applied to .etree-row via phaseTypeClass() */

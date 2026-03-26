@@ -53,7 +53,13 @@ export function renderTransactionCard(tx: Transaction, index: number): string {
   const statusClass = isError ? 'tx-error' : isWarning ? 'tx-warning' : 'tx-ok';
 
   const story      = buildStory(tx);
-  const searchText = [tx.entryPoint, tx.objectName, ...tx.phases.map(p => p.name)].filter(Boolean).join(' ');
+  // Include every useful field so the user can search by class name,
+  // object, operation, flow name, trigger name, etc.
+  const searchText = [
+    tx.entryPoint, tx.objectName, tx.dmlOperation,
+    ...tx.phases.map(p => [p.name, p.objectName, p.operation, p.entryPoint].filter(Boolean).join(' ')),
+  ].filter(Boolean).join(' ');
+
   _nodeSeq = 0;
   const treeNodes  = buildExecutionTree(tx.phases);
 
@@ -82,7 +88,10 @@ export function renderTransactionCard(tx: Transaction, index: number): string {
       <!-- ── Body: execution tree + detail panels ── -->
       <div class="tx-body">
         ${treeNodes.length > 0 ? /* html */`
-          <div class="tx-flow-label">Execution tree — click any step to see its details</div>
+          <div class="tx-flow-label">
+            Steps run <strong>top-to-bottom in sequence</strong> — a single call can chain Apex, Flows, and more
+            <span class="tx-flow-hint-inline">· Click any step to expand</span>
+          </div>
           <div class="exec-tree">${treeNodes.map(n => renderTreeNode(n)).join('')}</div>
         ` : ''}
 
@@ -178,21 +187,26 @@ function getConnectorLabel(child: ExecutionPhase, parent: ExecutionPhase | null)
 let _nodeSeq = 0; // stagger counter, reset per card render call
 
 function renderTreeNode(node: TreeNode): string {
-  const i         = _nodeSeq++;
+  const step      = _nodeSeq++;
   const p         = node.phase;
   const cls       = phaseTypeClass(p.type);
   const statusCls = p.status === 'error' ? 'etree-err' : p.status === 'warning' ? 'etree-warn' : '';
   const icon      = getPhaseIcon(p.type);
   const label     = getPhaseLabel(p.type);
   const durCls    = p.status === 'error' ? 'etree-dur-err' : p.isSlow ? 'etree-dur-slow' : '';
+  const context   = getPhaseContext(p);
 
   const row = /* html */`
     <div class="etree-row ${cls} ${statusCls} phase-pill" data-phase-id="${p.id}"
          title="${escAttr(p.entryPoint)}">
+      <span class="etree-step">${step + 1}</span>
       <span class="etree-icon">${icon}</span>
       <div class="etree-info">
-        <span class="etree-type-label">${label}</span>
-        <span class="etree-name">${escHtml(p.name.length > 30 ? p.name.slice(0, 28) + '…' : p.name)}</span>
+        <div class="etree-name-row">
+          <span class="etree-type-label">${label}</span>
+          <span class="etree-name">${escHtml(p.name)}</span>
+        </div>
+        ${context ? `<span class="etree-context">${escHtml(context)}</span>` : ''}
       </div>
       <div class="etree-badges">
         ${p.soqlCount    > 0 ? `<span class="etree-badge">🔍 ${p.soqlCount}</span>` : ''}
@@ -385,6 +399,27 @@ function getPhaseLabel(type: PhaseType): string {
     UNKNOWN:         'Unknown',
   };
   return labels[type] ?? type;
+}
+
+// ─── Phase context subtitle ───────────────────────────────────────────────────
+
+/**
+ * Returns a short context string shown below the phase name.
+ * Examples:
+ *   BEFORE_TRIGGER on Account · before insert  → "Account · before insert"
+ *   APEX_CLASS MyClass.doWork()                → "MyClass.doWork()"  (if entryPoint != name)
+ *   FLOW   My_Flow                             → ""  (name is self-explanatory)
+ */
+function getPhaseContext(p: ExecutionPhase): string {
+  const parts: string[] = [];
+  if (p.objectName) parts.push(p.objectName);
+  if (p.operation)  parts.push(p.operation);
+  if (parts.length > 0) return parts.join(' · ');
+  // For Apex classes the entryPoint carries the full method signature
+  if ((p.type as string) === 'APEX_CLASS' && p.entryPoint && p.entryPoint !== p.name) {
+    return p.entryPoint.length > 55 ? p.entryPoint.slice(0, 53) + '…' : p.entryPoint;
+  }
+  return '';
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
