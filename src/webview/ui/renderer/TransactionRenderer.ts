@@ -95,8 +95,6 @@ export function renderTransactionCard(tx: Transaction, index: number): string {
           <div class="exec-tree">${treeNodes.map(n => renderTreeNode(n)).join('')}</div>
         ` : ''}
 
-        <!-- Detail panels (hidden until a row is clicked) -->
-        ${tx.phases.map(p => renderPhaseDetail(p)).join('')}
         ${tx.errors.length > 0 ? renderTxErrors(tx) : ''}
       </div>
     </div>
@@ -232,7 +230,9 @@ function renderTreeNode(node: TreeNode): string {
     `
     : '';
 
-  return `<div class="etree-node" style="--node-i:${step}">${row}${children}</div>`;
+  const detail = renderPhaseDetail(p);
+
+  return `<div class="etree-node" style="--node-i:${step}">${row}${detail}${children}</div>`;
 }
 
 // ─── Phase detail panel ───────────────────────────────────────────────────────

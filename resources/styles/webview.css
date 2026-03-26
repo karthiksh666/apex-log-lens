@@ -1015,6 +1015,7 @@ code, pre, .detail-mono, .query-text, .raw-text {
   opacity: 1;
   border-color: var(--vscode-panel-border);
   border-top: none;
+  margin-bottom: 4px;
 }
 
 .pd-header {
